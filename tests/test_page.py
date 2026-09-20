@@ -142,7 +142,7 @@ class AcceptanceTest(unittest.TestCase):
         )
 
     def test_warns_about_the_negative_balance_without_blocking(self):
-        self.assertTrue(any("negative" in w for w in self.placed.warnings))
+        self.assertTrue(any(w.code == "negative_balance" for w in self.placed.warnings))
 
 
 class DateAndSequence(unittest.TestCase):
@@ -169,7 +169,7 @@ class DateAndSequence(unittest.TestCase):
             on=dt.date(2026, 7, 1), description="เบิกย้อนหลัง", amount=10
         )
         self.assertEqual(placed.row, 21)
-        self.assertTrue(any("earlier than" in w for w in placed.warnings))
+        self.assertTrue(any(w.code == "backdated" for w in placed.warnings))
 
     def test_note_goes_in_the_column_labelled_approver(self):
         placed = self.page.place(
@@ -225,7 +225,7 @@ class CapacityWarning(unittest.TestCase):
         page = Page("เงินสดย่อย6", PETTY_CASH, grid_for("เงินสดย่อย6"))
         placed = page.place(on=dt.date(2026, 8, 3), description="x", amount=1)
         self.assertEqual(placed.rows_remaining, 10)
-        self.assertFalse(any("row(s) left" in w for w in placed.warnings))
+        self.assertFalse(any(w.code == "low_capacity" for w in placed.warnings))
 
     def test_warns_when_the_page_is_nearly_full(self):
         grid = grid_for("เงินฉุกเฉิน3")
@@ -235,7 +235,7 @@ class CapacityWarning(unittest.TestCase):
         placed = page.place(on=dt.date(2026, 9, 1), description="x", amount=1)
         self.assertEqual(placed.row, 31)
         self.assertEqual(placed.rows_remaining, 2)
-        self.assertTrue(any("row(s) left" in w for w in placed.warnings))
+        self.assertTrue(any(w.code == "low_capacity" for w in placed.warnings))
 
 
 if __name__ == "__main__":

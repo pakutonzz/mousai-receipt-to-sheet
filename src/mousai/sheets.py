@@ -17,6 +17,7 @@ import re
 from dataclasses import dataclass
 from pathlib import Path
 
+from .messages import Notice, english
 from .page import Formula, Page, column_index
 from .templates import Template
 
@@ -33,7 +34,11 @@ CONFIG_HEADER = ["fund", "active_page"]
 
 
 class SheetsError(Exception):
-    pass
+    """Carries a Notice so the UI can say it in Thai. See messages.py."""
+
+    def __init__(self, notice: Notice):
+        self.notice = notice
+        super().__init__(english(notice))
 
 
 class RowTaken(SheetsError):
@@ -150,9 +155,7 @@ class Sheets:
         env = load_env(path)
         key = env.get("GOOGLE_APPLICATION_CREDENTIALS")
         if not key or not Path(key).is_file():
-            raise SheetsError(
-                "no service account key; run scripts/setup-google-access.sh first"
-            )
+            raise SheetsError(Notice("no_credentials"))
         credentials = service_account.Credentials.from_service_account_file(
             key, scopes=SCOPES
         )
@@ -168,7 +171,7 @@ class Sheets:
         """Every Workbook in the folder, newest first. This is the picker."""
         folder = folder_id or self.folder_id
         if not folder:
-            raise SheetsError("no folder id; set MOUSAI_DRIVE_FOLDER_ID in .env")
+            raise SheetsError(Notice("no_folder"))
         response = (
             self._drive.files()
             .list(
@@ -222,7 +225,7 @@ class Workbook:
         for sheet in self._metadata()["sheets"]:
             if sheet["properties"]["title"] == name:
                 return sheet["properties"]["sheetId"]
-        raise SheetNotFound(f"{name!r} is not a sheet in {self.title!r}")
+        raise SheetNotFound(Notice("sheet_missing", {"page": name}))
 
     def pages_for(self, template: Template) -> list[str]:
         """Candidate Page names for a Fund, by name prefix.
@@ -328,8 +331,7 @@ class Workbook:
         fresh = self.page(page.name, page.template)
         if fresh.free_row != placement.row:
             raise RowTaken(
-                f"{page.name}: row {placement.row} is no longer the free row "
-                f"(now {fresh.free_row}). Nothing was written; review and retry."
+                Notice("row_taken", {"page": page.name, "row": placement.row})
             )
         self._service.spreadsheets().batchUpdate(
             spreadsheetId=self.id,

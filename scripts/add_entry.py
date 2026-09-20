@@ -24,6 +24,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from mousai import BY_FUND, PETTY_CASH, Formula, PageError  # noqa: E402
+from mousai.messages import Notice, english  # noqa: E402
 from mousai.sheets import Sheets, SheetsError, load_env  # noqa: E402
 
 DATE_FORMATS = ("%d/%m/%Y", "%d/%m/%y", "%Y-%m-%d")
@@ -50,10 +51,7 @@ def choose_workbook(sheets: Sheets, explicit: str | None):
         return sheets.open(explicit), None
     found = sheets.workbooks()
     if not found:
-        raise SheetsError(
-            "no spreadsheets in the Drive folder. Has the Workbook been moved "
-            "into it, and is the folder shared with the service account?"
-        )
+        raise SheetsError(Notice("no_workbooks"))
     return sheets.open(found[0].id), found
 
 
@@ -65,8 +63,13 @@ def choose_page(workbook, template, explicit: str | None) -> str:
         return remembered
     candidates = workbook.pages_for(template)
     raise SheetsError(
-        f"no Page remembered for {template.fund} in this Workbook. "
-        f"Pass --page with one of: {', '.join(candidates) or '(none found)'}"
+        Notice(
+            "no_page_remembered",
+            {
+                "fund": template.fund,
+                "candidates": ", ".join(candidates) or "(none found)",
+            },
+        )
     )
 
 

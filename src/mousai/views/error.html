@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block heading %}ทำรายการไม่ได้{% endblock %}
+{% block body %}
+<div class="card"><p class="bad" style="margin:0">{{ message }}</p></div>
+<div class="foot">ยังไม่มีอะไรถูกเขียนลงไฟล์</div>
+<form method="get" action="/"><button type="submit">ย้อนกลับ</button></form>
+{% endblock %}

@@ -1,0 +1,73 @@
+{% extends "base.html" %}
+{% block heading %}ตรวจสอบก่อนบันทึก{% endblock %}
+{% block sub %}{{ workbook_title }} · {{ page }} · แถว {{ placement.row }}{% endblock %}
+{% block body %}
+<form method="post" action="/confirm">
+  <input type="hidden" name="fund" value="{{ fund }}">
+  <input type="hidden" name="workbook_id" value="{{ workbook_id }}">
+
+  <div class="card">
+    <label for="entry_date">วันที่</label>
+    <input type="date" id="entry_date" name="entry_date" value="{{ entry_date }}">
+
+    <label for="description">รายละเอียด</label>
+    <input type="text" id="description" name="description" value="{{ description }}">
+
+    <label for="amount">จำนวนเงิน (บาท)</label>
+    <input type="text" inputmode="decimal" class="amount" id="amount" name="amount" value="{{ amount }}">
+
+    <label for="requester">ผู้เบิก</label>
+    <input type="text" id="requester" name="requester" value="{{ requester }}">
+
+    <label for="note">หมายเหตุ</label>
+    <input type="text" id="note" name="note" value="{{ note }}">
+
+    <label for="page">หน้า</label>
+    <select id="page" name="page">
+      {% for c in candidates %}
+      <option value="{{ c }}" {% if c == page %}selected{% endif %}>{{ c }}</option>
+      {% endfor %}
+    </select>
+  </div>
+
+  <div class="card">
+    <table class="rows">
+      <tr><td>ลงแถวที่</td><td>{{ placement.row }}</td></tr>
+      <tr><td>ลำดับ</td><td>{{ placement.sequence }}</td></tr>
+      <tr><td>ยอดคงเหลือเดิม</td><td>{{ "%.2f"|format(previous.balance) }}</td></tr>
+      <tr><td>คงเหลือใหม่</td>
+        <td {% if placement.balance < 0 %}class="bad"{% endif %}>
+          {{ "%.2f"|format(placement.balance) }}</td></tr>
+      <tr><td>เหลือที่ว่าง</td><td>{{ placement.rows_remaining }} แถว</td></tr>
+    </table>
+    {% if not placement.write_date %}
+    <div class="sub" style="margin-top:10px">วันเดียวกับแถวบน ช่องวันที่จะเว้นว่างไว้</div>
+    {% endif %}
+  </div>
+
+  {% for w in warnings %}<div class="warn">{{ w }}</div>{% endfor %}
+  {% if reading.notes %}
+  <div class="card">
+    <div class="sub">ที่มาของข้อมูล</div>
+    <table class="rows">{% for n in reading.notes %}<tr><td colspan="2">{{ n }}</td></tr>{% endfor %}</table>
+  </div>
+  {% endif %}
+
+  <div class="card">
+    <div class="sub">เซลล์ที่จะเขียน</div>
+    <table class="rows mono">
+      {% for ref, value in placement.cells.items()|sort %}
+      <tr><td>{{ ref }}</td><td>{{ value }}</td></tr>
+      {% endfor %}
+    </table>
+  </div>
+
+  <label style="display:flex;gap:8px;align-items:center;margin:0">
+    <input type="checkbox" name="remember" value="1" checked style="width:auto">
+    <span>จำหน้านี้ไว้สำหรับ {{ fund }}</span>
+  </label>
+
+  <button type="submit">ยืนยันบันทึก</button>
+</form>
+<form method="get" action="/"><button type="submit" class="quiet">ยกเลิก</button></form>
+{% endblock %}

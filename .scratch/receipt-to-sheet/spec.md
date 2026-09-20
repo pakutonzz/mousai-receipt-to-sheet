@@ -66,9 +66,13 @@ confirming it.
 
 ## Out of scope this phase
 
-OCR (comes after the write path is proven), Top-ups and the Ledger sheets,
-creating Pages, writing a certificate alongside an Entry, and any automatic
-update of the summary sheets.
+Top-ups and the Ledger sheets, creating Pages, writing a certificate alongside
+an Entry, and any automatic update of the summary sheets.
+
+OCR was out of scope until the write path was proven; it is now built. Claude
+reads the image when `ANTHROPIC_API_KEY` is set, Google Cloud Vision otherwise,
+and neither is required — every backend failure degrades to typing, and nothing
+OCR produces is written without a person confirming it.
 
 ## Getting to production
 

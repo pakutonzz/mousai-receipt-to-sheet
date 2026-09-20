@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>{% block title %}บันทึกค่าใช้จ่าย{% endblock %}</title>
+<style>
+  :root {
+    --bg: #f6f6f4; --card: #fff; --ink: #1a1a18; --muted: #6b6b66;
+    --line: #dedcd6; --accent: #7c3a6b; --accent-ink: #fff;
+    --warn-bg: #fff6e0; --warn-line: #e0b350; --bad: #a62828;
+    --ok-bg: #e8f5e9; --ok-line: #5a9e62;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #17171a; --card: #202024; --ink: #ececea; --muted: #9a9a94;
+      --line: #35353b; --accent: #b566a0; --accent-ink: #17171a;
+      --warn-bg: #3a3118; --warn-line: #a8842f; --bad: #e88b8b;
+      --ok-bg: #1e3222; --ok-line: #5a9e62;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 0 16px 48px; background: var(--bg); color: var(--ink);
+    font: 16px/1.5 -apple-system, "Segoe UI", "Noto Sans Thai", system-ui, sans-serif;
+  }
+  .wrap { max-width: 34rem; margin: 0 auto; }
+  header { padding: 20px 0 12px; }
+  h1 { font-size: 1.25rem; margin: 0; letter-spacing: -0.01em; }
+  .sub { color: var(--muted); font-size: 0.85rem; margin-top: 2px; }
+  .card {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 16px; margin-bottom: 14px;
+  }
+  label { display: block; font-size: 0.8rem; color: var(--muted); margin: 12px 0 4px; }
+  label:first-child { margin-top: 0; }
+  input[type=text], input[type=date], input[type=number], select, textarea {
+    width: 100%; padding: 11px 12px; font-size: 1rem; font-family: inherit;
+    color: var(--ink); background: var(--bg);
+    border: 1px solid var(--line); border-radius: 8px;
+  }
+  input[type=file] { width: 100%; font-size: 0.9rem; }
+  .amount { font-size: 1.4rem; font-variant-numeric: tabular-nums; }
+  button {
+    width: 100%; padding: 14px; font-size: 1rem; font-family: inherit; font-weight: 600;
+    color: var(--accent-ink); background: var(--accent);
+    border: 0; border-radius: 10px; cursor: pointer; margin-top: 16px;
+  }
+  button.quiet { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  .funds { display: flex; gap: 8px; }
+  .funds label {
+    flex: 1; margin: 0; padding: 12px 8px; text-align: center; cursor: pointer;
+    border: 1px solid var(--line); border-radius: 9px; color: var(--ink); font-size: 0.95rem;
+  }
+  .funds input { position: absolute; opacity: 0; }
+  .funds input:checked + span { font-weight: 700; color: var(--accent); }
+  .warn {
+    background: var(--warn-bg); border: 1px solid var(--warn-line);
+    border-radius: 9px; padding: 10px 12px; margin-top: 10px; font-size: 0.9rem;
+  }
+  .rows { width: 100%; border-collapse: collapse; font-size: 0.85rem; margin-top: 8px; }
+  .rows td { padding: 5px 0; border-bottom: 1px solid var(--line); }
+  .rows td:first-child { color: var(--muted); width: 38%; }
+  .rows td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
+  .mono { font-family: ui-monospace, "Cascadia Mono", Consolas, monospace; font-size: 0.8rem; }
+  .ok { background: var(--ok-bg); border: 1px solid var(--ok-line); border-radius: 9px; padding: 14px; }
+  .bad { color: var(--bad); }
+  a { color: var(--accent); }
+  .foot { color: var(--muted); font-size: 0.78rem; text-align: center; margin-top: 18px; }
+</style>
+</head>
+<body><div class="wrap">
+<header>
+  <h1>{% block heading %}บันทึกค่าใช้จ่าย{% endblock %}</h1>
+  <div class="sub">{% block sub %}คลินิก มูไซ เวลเนส เซนเตอร์{% endblock %}</div>
+</header>
+{% block body %}{% endblock %}
+</div></body>
+</html>

@@ -1,6 +1,6 @@
 # Warn in the preview when a Page is nearly full
 
-Status: ready-for-agent
+Status: resolved
 
 The preview shows how many rows remain in the target Page's data region, and
 warns when fewer than three are left.
@@ -52,3 +52,12 @@ Still to do: the preview has to surface `rows_remaining` and render the warning
 visibly, with the text telling the user to duplicate the Page, clear the data
 region, add the `ยกยอดมา` row and pick the new Page here once. Reopen for the UI
 work when the preview exists.
+
+**Resolved.** The preview screen shows `เหลือที่ว่าง N แถว` for the chosen Page
+on every check, and below three rows it renders the Thai warning
+`หน้านี้เหลือที่ว่างอีก N แถว ควรเปิดหน้าใหม่เร็ว ๆ นี้`. The confirmation screen
+repeats it, so the person who wrote the Entry sees it even if they skimmed the
+preview. A full region still raises the hard error, unchanged.
+
+Covered by `tests/test_page.py::CapacityWarning` (quiet and warning cases) and
+`tests/test_web.py::Preview::test_shows_rows_remaining`.

@@ -15,6 +15,7 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass, field
 
+from .messages import Notice, english
 from .templates import Template
 
 # Excel and Sheets both count days from this date.
@@ -44,7 +45,15 @@ def column_index(letter: str) -> int:
 
 
 class PageError(Exception):
-    """The Entry cannot be placed at all."""
+    """The Entry cannot be placed at all.
+
+    Carries a Notice rather than a string, so the web UI can say it in Thai and
+    the terminal can say it in English without either of them parsing prose.
+    """
+
+    def __init__(self, notice: Notice):
+        self.notice = notice
+        super().__init__(english(notice))
 
 
 class RegionNotFound(PageError):
@@ -110,7 +119,7 @@ class Placement:
     sequence: int
     balance: float
     cells: dict[str, object]
-    warnings: tuple[str, ...] = ()
+    warnings: tuple[Notice, ...] = ()
     rows_remaining: int = 0
 
 
@@ -129,8 +138,14 @@ class Page:
         self.totals_row = self._find_row(template.totals_marker)
         if self.header_row is None or self.totals_row is None:
             raise RegionNotFound(
-                f"{name}: could not find {template.header_marker!r} and "
-                f"{template.totals_marker!r}; this may not be a {template.fund} Page"
+                Notice(
+                    "region_not_found",
+                    {
+                        "page": name,
+                        "header": template.header_marker,
+                        "fund": template.fund,
+                    },
+                )
             )
         self.first_row = self.header_row + 1
         self.last_row = self.totals_row - 1
@@ -218,22 +233,27 @@ class Page:
         """Work out where this Entry goes and what it looks like."""
         previous = self.last_entry
         if previous is None:
-            raise NoOpeningRow(
-                f"{self.name}: no opening row. Add the ยกยอดมา row with the "
-                f"closing balance of the previous Page first."
-            )
+            raise NoOpeningRow(Notice("no_opening_row", {"page": self.name}))
 
         row = self.free_row
         if row is None:
             raise RegionFull(
-                f"{self.name}: rows {self.first_row}-{self.last_row} are full. "
-                f"Open a new Page before adding more."
+                Notice(
+                    "region_full",
+                    {
+                        "page": self.name,
+                        "first": self.first_row,
+                        "last": self.last_row,
+                    },
+                )
             )
 
         if previous.balance is None:
             raise NoOpeningRow(
-                f"{self.name}!{self.template.balance}{previous.number}: the row "
-                f"above has no balance, so a new one cannot be computed."
+                Notice(
+                    "no_balance_above",
+                    {"page": self.name, "row": previous.number},
+                )
             )
 
         t = self.template
@@ -272,29 +292,25 @@ class Page:
             rows_remaining=remaining,
         )
 
-    def _warnings(self, previous, last_date, on, balance, remaining) -> list[str]:
+    def _warnings(self, previous, last_date, on, balance, remaining) -> list[Notice]:
         out = []
         if balance < 0:
-            out.append(
-                f"balance would go negative: {balance:,.2f}. "
-                f"Saving is still allowed."
-            )
+            out.append(Notice("negative_balance", {"balance": balance}))
         if last_date is not None and on < last_date:
             out.append(
-                f"{on:%d/%m/%Y} is earlier than the row above ({last_date:%d/%m/%Y}). "
-                f"It will still be appended at the bottom."
+                Notice(
+                    "backdated",
+                    {
+                        "on": f"{on:%d/%m/%Y}",
+                        "last": f"{last_date:%d/%m/%Y}",
+                    },
+                )
             )
         if (
             previous.number != self.first_row
             and previous.received not in (None, "", NOT_APPLICABLE, 0)
         ):
-            out.append(
-                f"the row above records a Top-up ({previous.received!r}). "
-                f"Top-ups are not handled yet; check the balance by hand."
-            )
+            out.append(Notice("topup_above", {"value": previous.received}))
         if remaining < LOW_CAPACITY:
-            out.append(
-                f"only {remaining} row(s) left on this Page after this Entry. "
-                f"Open the next Page soon."
-            )
+            out.append(Notice("low_capacity", {"remaining": remaining}))
         return out

@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% block body %}
+<form method="post" action="/preview" enctype="multipart/form-data">
+  <div class="card">
+    <label for="receipt">ถ่ายรูป หรือเลือกไฟล์ใบเสร็จ</label>
+    <input type="file" id="receipt" name="receipt" accept="image/*" capture="environment">
+    <div class="sub" style="margin-top:8px">
+      {% if ocr_name == "none" %}
+        ยังไม่ได้เปิดระบบอ่านใบเสร็จ กรอกข้อมูลเองด้านล่างได้เลย
+      {% else %}
+        ระบบจะอ่านยอดเงินให้ แล้วให้ตรวจสอบก่อนบันทึกเสมอ
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card">
+    <label>ประเภทเงิน</label>
+    <div class="funds">
+      {% for f in funds %}
+      <label><input type="radio" name="fund" value="{{ f }}"
+        {% if loop.first %}checked{% endif %}><span>{{ f }}</span></label>
+      {% endfor %}
+    </div>
+
+    <label for="workbook_id">ไฟล์</label>
+    <select id="workbook_id" name="workbook_id">
+      {% for w in workbooks %}<option value="{{ w.id }}">{{ w.title }}</option>{% endfor %}
+    </select>
+
+    <label for="entry_date">วันที่</label>
+    <input type="date" id="entry_date" name="entry_date" value="{{ today }}">
+
+    <label for="description">รายละเอียด</label>
+    <input type="text" id="description" name="description" placeholder="เช่น ค่าขนมปังรับรองลูกค้า">
+
+    <label for="amount">จำนวนเงิน (บาท)</label>
+    <input type="text" inputmode="decimal" class="amount" id="amount" name="amount" placeholder="0.00">
+
+    <label for="requester">ผู้เบิก</label>
+    <input type="text" id="requester" name="requester" value="-">
+
+    <label for="note">หมายเหตุ</label>
+    <input type="text" id="note" name="note" placeholder="ไม่บังคับ">
+  </div>
+
+  <button type="submit">ตรวจสอบก่อนบันทึก</button>
+</form>
+<div class="foot">
+  {% if workbooks %}{{ workbooks|length }} ไฟล์ที่เขียนได้{% else %}ไม่พบไฟล์{% endif %}
+  · OCR: {{ ocr_name }}
+</div>
+{% endblock %}
