@@ -18,6 +18,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from fastapi.testclient import TestClient  # noqa: E402
 
 from mousai.page import column_index  # noqa: E402
+from mousai.messages import Notice  # noqa: E402
 from mousai.receipt import Reading  # noqa: E402
 from mousai.sheets import CONFIG_SHEET, Workbook, WorkbookRef  # noqa: E402
 from mousai.templates import PETTY_CASH  # noqa: E402
@@ -216,15 +217,22 @@ class Preview(unittest.TestCase):
         client, _, _ = build()
         self.assertIn("10 แถว", client.post("/preview", data=fields()).text)
 
-    def test_rejects_a_missing_amount(self):
+    def test_a_missing_amount_comes_back_with_what_was_read(self):
         client, service, _ = build()
-        response = client.post("/preview", data=fields(amount=""))
-        self.assertIn("จำนวนเงิน", response.text)
+        response = client.post("/preview", data=fields(amount="", description="ค่ากาแฟ"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("กรุณากรอกยอดเงินเอง", response.text)
+        self.assertIn('value="ค่ากาแฟ"', response.text)
         self.assertEqual(service.batches, [])
 
-    def test_rejects_zero(self):
-        client, _, _ = build()
-        self.assertEqual(client.post("/preview", data=fields(amount="0")).status_code, 400)
+    def test_an_unreadable_amount_returns_the_form_not_a_dead_end(self):
+        """OCR failing to find the total is the ordinary case this screen exists
+        for. Throwing the user back to an empty form would lose the photo."""
+        client, service, _ = build()
+        response = client.post("/preview", data=fields(amount="0"))
+        self.assertEqual(response.status_code, 200)
+        self.assertIn("กรุณากรอกยอดเงินเอง", response.text)
+        self.assertEqual(service.batches, [])
 
 
 class WithAReceipt(unittest.TestCase):
@@ -232,7 +240,7 @@ class WithAReceipt(unittest.TestCase):
         amount=23.0,
         date=dt.date(2026, 8, 3),
         description="ค่าขนมปังรับรองลูกค้า",
-        notes=["read by a fake"],
+        notes=[Notice("ocr_read_by_google")],
     )
 
     def test_ocr_fills_the_blank_fields(self):
@@ -244,7 +252,7 @@ class WithAReceipt(unittest.TestCase):
         )
         self.assertEqual(reader.calls, 1)
         self.assertIn("23.0", response.text)
-        self.assertIn("read by a fake", response.text)
+        self.assertIn("Google Cloud Vision", response.text)
 
     def test_what_the_user_typed_beats_what_ocr_read(self):
         client, _, _ = build(self.READING)

@@ -59,10 +59,10 @@
   </div>
 
   {% for w in warnings %}<div class="warn">{{ w }}</div>{% endfor %}
-  {% if reading.notes %}
+  {% if reading_notes %}
   <div class="card">
     <div class="sub">ที่มาของข้อมูล</div>
-    <table class="rows">{% for n in reading.notes %}<tr><td colspan="2">{{ n }}</td></tr>{% endfor %}</table>
+    <table class="rows">{% for n in reading_notes %}<tr><td colspan="2">{{ n }}</td></tr>{% endfor %}</table>
   </div>
   {% endif %}
 

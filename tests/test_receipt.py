@@ -10,7 +10,15 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from mousai.receipt import parse_amount, parse_date, parse_description, read  # noqa: E402
+from mousai.messages import Notice, thai  # noqa: E402
+from mousai.receipt import (  # noqa: E402
+    Word,
+    parse_amount,
+    parse_date,
+    parse_description,
+    read,
+    read_layout,
+)
 
 SEVEN_ELEVEN = """บริษัท ซีพี ออลล์ จำกัด (มหาชน)
 สาขา 00123 สุขุมวิท 39
@@ -44,7 +52,7 @@ class Amounts(unittest.TestCase):
         """The largest number on this receipt is 100.00, which is not the total."""
         amount, why = parse_amount(SEVEN_ELEVEN)
         self.assertEqual(amount, 23.00)
-        self.assertIn("รวม", why)
+        self.assertEqual(why.values["keyword"], "รวม")
 
     def test_ignores_change_and_vat_lines(self):
         amount, _ = parse_amount(WITH_VAT)
@@ -61,7 +69,7 @@ class Amounts(unittest.TestCase):
     def test_amount_on_the_following_line(self):
         amount, why = parse_amount("ยอดสุทธิ\n1,558.00\n")
         self.assertEqual(amount, 1558.00)
-        self.assertIn("after", why)
+        self.assertEqual(why.code, "amount_from_next_line")
 
     def test_leaves_it_blank_when_no_total_line_is_found(self):
         """Across 24 real receipts, guessing at the largest number was never
@@ -69,7 +77,7 @@ class Amounts(unittest.TestCase):
         preview whose whole job is to be checked."""
         amount, why = parse_amount("ก๋วยเตี๋ยว 60.00\nน้ำ 15.00\n")
         self.assertIsNone(amount)
-        self.assertIn("no amount", why)
+        self.assertEqual(why.code, "amount_not_found")
 
     def test_ignores_tax_ids_and_phone_numbers(self):
         amount, _ = parse_amount(
@@ -80,7 +88,7 @@ class Amounts(unittest.TestCase):
     def test_nothing_to_find(self):
         amount, why = parse_amount("ขอบคุณที่ใช้บริการ")
         self.assertIsNone(amount)
-        self.assertIn("no amount", why)
+        self.assertEqual(why.code, "amount_not_found")
 
 
 class Dates(unittest.TestCase):
@@ -132,13 +140,32 @@ class WholeReading(unittest.TestCase):
         reading = read(SEVEN_ELEVEN, today=dt.date(2026, 8, 5))
         self.assertEqual(reading.amount, 23.00)
         self.assertEqual(reading.date, dt.date(2026, 8, 3))
-        self.assertIn("ซีพี ออลล์", reading.description)
+        self.assertIn("ซีพี ออลล์", reading.shop)
         self.assertFalse(reading.empty)
         self.assertEqual(len(reading.notes), 3)
 
     def test_unreadable_text_yields_an_empty_reading(self):
         reading = read("~~~~~~")
         self.assertTrue(reading.empty)
+
+    def test_every_note_is_a_notice_so_the_ui_can_speak_thai(self):
+        """A stray f-string here reaches the user as English mid-sentence, and
+        crashes the renderer, which is exactly what happened once."""
+        for reading in (read(SEVEN_ELEVEN), read("~~~~~~")):
+            for note in reading.notes:
+                self.assertIsInstance(note, Notice)
+                self.assertTrue(thai(note))
+
+    def test_read_layout_notes_are_notices_too(self):
+        words = [
+            Word(text="รวม", x0=10, y0=10, x1=50, y1=30),
+            Word(text="65.00", x0=200, y0=10, x1=260, y1=30),
+        ]
+        reading = read_layout(words, text="รวม 65.00")
+        self.assertEqual(reading.amount, 65.00)
+        for note in reading.notes:
+            self.assertIsInstance(note, Notice)
+            self.assertTrue(thai(note))
 
 
 if __name__ == "__main__":

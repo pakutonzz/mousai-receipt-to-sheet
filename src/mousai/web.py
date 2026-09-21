@@ -145,21 +145,41 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
     def health():
         return {"ok": True, "ocr": get_reader().name}
 
-    @app.get("/", response_class=HTMLResponse)
-    def index(request: Request):
+    def form_page(
+        request: Request,
+        *,
+        workbook_id: str | None = None,
+        message: str | None = None,
+        selected_page: str | None = None,
+        entry_date: str | None = None,
+        description: str = "",
+        amount: str = "",
+        requester: str = "-",
+        note: str = "",
+    ):
+        """The entry form, optionally carrying back what we already know.
+
+        Reused when a receipt was read but something is still missing, so the
+        person keeps the fields OCR did get instead of starting over.
+        """
         try:
             books = get_sheets().workbooks()
             if not books:
                 return fail(request, Notice("no_workbooks"))
-            workbook = get_sheets().open(books[0].id)
+            workbook = get_sheets().open(workbook_id or books[0].id)
             pages, remembered, requesters = survey(workbook)
         except SheetsError as error:
             return fail(request, error.notice)
         if not pages:
             return fail(request, Notice("no_pages", {"workbook": workbook.title}))
 
-        default = next(
-            (p["name"] for g in group_pages(pages, remembered) for p in g["pages"] if p["remembered"]),
+        default = selected_page or next(
+            (
+                p["name"]
+                for g in group_pages(pages, remembered)
+                for p in g["pages"]
+                if p["remembered"]
+            ),
             pages[-1][0],
         )
         return TEMPLATES.TemplateResponse(
@@ -167,14 +187,25 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
             "index.html",
             {
                 "workbooks": books,
+                "workbook_id": workbook.id,
                 "groups": group_pages(pages, remembered),
                 "selected_page": default,
                 "requesters": requesters,
                 "other": OTHER,
                 "ocr_name": get_reader().name,
                 "today": dt.date.today().isoformat(),
+                "message": message,
+                "entry_date": entry_date or dt.date.today().isoformat(),
+                "description": description,
+                "amount": amount,
+                "requester": requester,
+                "note": note,
             },
         )
+
+    @app.get("/", response_class=HTMLResponse)
+    def index(request: Request):
+        return form_page(request)
 
     @app.get("/api/pages")
     def api_pages(workbook_id: str):
@@ -227,7 +258,20 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
         chosen_requester = _requester(requester, requester_other)
 
         if chosen_amount is None or chosen_amount <= 0:
-            return fail(request, Notice("amount_required"))
+            # Not an error page. OCR failing to find the total is the ordinary
+            # case this whole screen exists for, and throwing the user back to an
+            # empty form would lose the photo and everything read off it.
+            return form_page(
+                request,
+                workbook_id=workbook_id,
+                message=thai(Notice("amount_needed")),
+                selected_page=page,
+                entry_date=chosen_date.isoformat(),
+                description=chosen_description,
+                amount="",
+                requester=chosen_requester,
+                note=note,
+            )
 
         try:
             workbook = get_sheets().open(workbook_id)
@@ -268,6 +312,7 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
                 "requester": chosen_requester,
                 "note": note,
                 "reading": reading,
+                "reading_notes": [thai(n) for n in reading.notes],
             },
         )
 

@@ -48,6 +48,17 @@ TH = {
     "ocr_unavailable": "อ่านใบเสร็จอัตโนมัติไม่ได้ในขณะนี้ กรุณากรอกข้อมูลเอง",
     "ocr_no_text": "ไม่พบข้อความในรูปนี้ กรุณาถ่ายใหม่ให้ชัดขึ้น หรือกรอกเอง",
     "ocr_read_by_google": "อ่านด้วย Google Cloud Vision กรุณาตรวจสอบทุกช่อง",
+    "detail": "{text}",
+    "amount_from_keyword": "ยอดเงิน: อ่านจากบรรทัด {keyword}",
+    "amount_from_keyword_loose": "ยอดเงิน: อ่านจากบรรทัด {keyword} (ตัวอักษรไม่ชัด)",
+    "amount_from_next_line": "ยอดเงิน: อ่านจากบรรทัดถัดจาก {keyword}",
+    "amount_from_change": "ยอดเงิน: คำนวณจากเงินสดหักเงินทอน",
+    "amount_not_found": "ยอดเงิน: หาไม่พบ กรุณากรอกเอง",
+    "date_read": "วันที่: อ่านได้ {text}",
+    "date_not_found": "วันที่: หาไม่พบ ใช้วันที่วันนี้",
+    "shop_seen": "ร้าน: {shop}",
+    "shop_not_found": "ร้าน: หาไม่พบ",
+    "amount_needed": "อ่านยอดเงินจากรูปไม่ได้ กรุณากรอกยอดเงินเอง แล้วกดตรวจสอบอีกครั้ง",
 }
 
 EN = {
@@ -76,7 +87,23 @@ EN = {
     "ocr_unavailable": "receipt reading is unavailable right now; fill in by hand",
     "ocr_no_text": "no text found in that image; retake it or type the fields",
     "ocr_read_by_google": "read by Google Cloud Vision; check every field",
+    "detail": "{text}",
+    "amount_from_keyword": "amount: from the {keyword} line",
+    "amount_from_keyword_loose": "amount: from the {keyword} line, read loosely",
+    "amount_from_next_line": "amount: from the line after {keyword}",
+    "amount_from_change": "amount: tendered minus change",
+    "amount_not_found": "amount: not found; fill it in by hand",
+    "date_read": "date: read {text}",
+    "date_not_found": "date: not found; using today",
+    "shop_seen": "shop: {shop}",
+    "shop_not_found": "shop: not found",
+    "amount_needed": "could not read the amount; type it in and check again",
 }
+
+
+# Codes whose whole body is a value supplied at runtime (an API error string,
+# say). They have no wording of their own, in either language.
+PASSTHROUGH = {"detail"}
 
 
 def render(notice: Notice, language: str = "th") -> str:

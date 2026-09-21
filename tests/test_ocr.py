@@ -76,14 +76,14 @@ class NeverBreaksTheManualPath(unittest.TestCase):
             HttpErrorLike("Cloud Vision API has not been used in project 380811892204")
         ).read_image(IMAGE, "image/jpeg")
         self.assertTrue(reading.empty)
-        self.assertIn("กรอกข้อมูลเอง", reading.notes[0])
+        self.assertEqual(reading.notes[0].code, "ocr_unavailable")
 
     def test_a_blown_quota_degrades_to_typing(self):
         reading = reader_raising(HttpErrorLike("429 Quota exceeded")).read_image(
             IMAGE, "image/jpeg"
         )
         self.assertTrue(reading.empty)
-        self.assertIn("429", " ".join(reading.notes))
+        self.assertIn("429", " ".join(str(n) for n in reading.notes))
 
     def test_a_dead_network_degrades_to_typing(self):
         reading = reader_raising(OSError("no route to host")).read_image(
@@ -96,16 +96,16 @@ class NeverBreaksTheManualPath(unittest.TestCase):
             {"responses": [{"error": {"message": "API not enabled"}}]}
         ).read_image(IMAGE, "image/jpeg")
         self.assertTrue(reading.empty)
-        self.assertIn("API not enabled", " ".join(reading.notes))
+        self.assertIn("API not enabled", " ".join(str(n) for n in reading.notes))
 
     def test_a_blank_image_says_so_in_thai(self):
         reading = reader_returning({"responses": [{}]}).read_image(IMAGE, "image/jpeg")
         self.assertTrue(reading.empty)
-        self.assertIn("ไม่พบข้อความ", reading.notes[0])
+        self.assertEqual(reading.notes[0].code, "ocr_no_text")
 
     def test_the_detail_line_is_trimmed_not_a_stack_trace(self):
         reading = reader_raising(HttpErrorLike("x" * 500)).read_image(IMAGE, "image/jpeg")
-        self.assertLessEqual(max(len(n) for n in reading.notes), 200)
+        self.assertLessEqual(max(len(str(n)) for n in reading.notes), 200)
 
 
 class WordBoxes(unittest.TestCase):
@@ -168,7 +168,7 @@ class ReadingAReceipt(unittest.TestCase):
         }
         reading = reader_returning(response).read_image(IMAGE, "image/jpeg")
         self.assertEqual(reading.amount, 65.00)
-        self.assertIn("Google Cloud Vision", reading.notes[0])
+        self.assertEqual(reading.notes[0].code, "ocr_read_by_google")
 
 
 class Selection(unittest.TestCase):
@@ -177,7 +177,7 @@ class Selection(unittest.TestCase):
         self.assertIsInstance(reader, NullReader)
         reading = reader.read_image(IMAGE, "image/jpeg")
         self.assertTrue(reading.empty)
-        self.assertIn("กรอกข้อมูลเอง", reading.notes[0])
+        self.assertEqual(reading.notes[0].code, "ocr_absent")
 
     def test_a_missing_key_file_means_no_ocr(self):
         reader = detect({"GOOGLE_APPLICATION_CREDENTIALS": "secrets/not-there.json"})

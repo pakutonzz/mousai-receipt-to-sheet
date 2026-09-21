@@ -18,7 +18,7 @@ import base64
 from pathlib import Path
 from typing import Protocol
 
-from .messages import Notice, thai
+from .messages import Notice
 from .receipt import Reading, Word
 from .receipt import read as read_text
 from .receipt import read_layout
@@ -46,7 +46,7 @@ class NullReader:
     configured = False
 
     def read_image(self, data: bytes, mime: str) -> Reading:
-        return Reading(notes=[thai(Notice("ocr_absent"))])
+        return Reading(notes=[Notice("ocr_absent")])
 
 
 def words_from(response: dict) -> list[Word]:
@@ -109,24 +109,24 @@ class GoogleVisionReader:
             # Deliberately broad. A disabled API raises HttpError, a dead network
             # raises OSError, and an expired key raises from the auth library —
             # none of which may reach the user as anything but a note.
-            return Reading(notes=[thai(Notice("ocr_unavailable")), _detail(error)])
+            return Reading(notes=[Notice("ocr_unavailable"), Notice("detail", {"text": _detail(error)})])
 
         result = (response.get("responses") or [{}])[0]
         if "error" in result:
             return Reading(
                 notes=[
-                    thai(Notice("ocr_unavailable")),
-                    str(result["error"].get("message", "")),
+                    Notice("ocr_unavailable"),
+                    Notice("detail", {"text": str(result["error"].get("message", ""))}),
                 ]
             )
 
         text = (result.get("fullTextAnnotation") or {}).get("text", "")
         words = words_from(result)
         if not text.strip() and not words:
-            return Reading(notes=[thai(Notice("ocr_no_text"))])
+            return Reading(notes=[Notice("ocr_no_text")])
 
         reading = read_layout(words, text=text)
-        reading.notes.insert(0, thai(Notice("ocr_read_by_google")))
+        reading.notes.insert(0, Notice("ocr_read_by_google"))
         return reading
 
 

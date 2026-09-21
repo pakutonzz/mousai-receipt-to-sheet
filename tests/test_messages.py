@@ -16,7 +16,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
-from mousai.messages import EN, TH, Notice, english, thai  # noqa: E402
+from mousai.messages import EN, PASSTHROUGH, TH, Notice, english, thai  # noqa: E402
 
 SOURCES = list((ROOT / "src" / "mousai").glob("*.py")) + list((ROOT / "scripts").glob("*.py"))
 USED = re.compile(r'Notice\(\s*"([a-z_]+)"')
@@ -37,6 +37,8 @@ class Coverage(unittest.TestCase):
     def test_thai_wording_is_actually_thai(self):
         """A copy-pasted English string in the TH table would be invisible."""
         for code, text in TH.items():
+            if code in PASSTHROUGH:
+                continue
             with self.subTest(code=code):
                 self.assertTrue(
                     any("฀" <= ch <= "๿" for ch in text),

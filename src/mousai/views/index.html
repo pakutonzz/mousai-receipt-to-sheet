@@ -1,5 +1,6 @@
 {% extends "base.html" %}
 {% block body %}
+{% if message %}<div class="warn">{{ message }}</div>{% endif %}
 <form method="post" action="/preview" enctype="multipart/form-data">
   <div class="card">
     <label for="receipt">ถ่ายรูป หรือเลือกไฟล์ใบเสร็จ</label>
@@ -16,7 +17,7 @@
   <div class="card">
     <label for="workbook_id">ไฟล์</label>
     <select id="workbook_id" name="workbook_id">
-      {% for w in workbooks %}<option value="{{ w.id }}">{{ w.title }}</option>{% endfor %}
+      {% for w in workbooks %}<option value="{{ w.id }}"{% if w.id == workbook_id %} selected{% endif %}>{{ w.title }}</option>{% endfor %}
     </select>
 
     <label for="page">หน้าที่จะบันทึก</label>
@@ -35,13 +36,15 @@
     <div class="sub">● คือหน้าที่ใช้อยู่ล่าสุด เลือกหน้าอื่นได้ตามต้องการ</div>
 
     <label for="entry_date">วันที่</label>
-    <input type="date" id="entry_date" name="entry_date" value="{{ today }}">
+    <input type="date" id="entry_date" name="entry_date" value="{{ entry_date or today }}">
 
     <label for="description">รายละเอียด</label>
-    <input type="text" id="description" name="description" placeholder="เช่น ค่าขนมปังรับรองลูกค้า">
+    <input type="text" id="description" name="description" value="{{ description or '' }}"
+           placeholder="เช่น ค่าขนมปังรับรองลูกค้า">
 
     <label for="amount">จำนวนเงิน (บาท)</label>
-    <input type="text" inputmode="decimal" class="amount" id="amount" name="amount" placeholder="0.00">
+    <input type="text" inputmode="decimal" class="amount" id="amount" name="amount"
+           value="{{ amount or '' }}" placeholder="0.00">
 
     <label for="requester">ผู้เบิก</label>
     <select id="requester" name="requester">
@@ -55,7 +58,7 @@
            placeholder="พิมพ์ชื่อผู้เบิก" hidden>
 
     <label for="note">หมายเหตุ</label>
-    <input type="text" id="note" name="note" placeholder="ไม่บังคับ">
+    <input type="text" id="note" name="note" value="{{ note or '' }}" placeholder="ไม่บังคับ">
   </div>
 
   <button type="submit">ตรวจสอบก่อนบันทึก</button>

@@ -14,6 +14,8 @@ import difflib
 import re
 from dataclasses import dataclass, field
 
+from .messages import Notice
+
 # A keyword shorter than this is matched exactly. Fuzzy-matching "รวม" against
 # three-character windows would fire on half a receipt.
 FUZZY_MIN_LENGTH = 4
@@ -108,8 +110,13 @@ class Reading:
     amount: float | None = None
     date: dt.date | None = None
     description: str | None = None
+    # The shop name, when one is legible. Deliberately NOT offered as the
+    # description: a ledger line reads "ค่ากาแฟคุณหมอ", which is an editorial
+    # judgement about why money was spent. OCR cannot make that call, and
+    # pre-filling a branch name invites someone to accept it unedited.
+    shop: str | None = None
     text: str = ""
-    notes: list[str] = field(default_factory=list)
+    notes: list[Notice] = field(default_factory=list)
 
     @property
     def empty(self) -> bool:
@@ -202,7 +209,7 @@ def _money_on(line: str) -> list[float]:
     return out
 
 
-def _scan(lines: list[str], matches, label: str) -> tuple[float | None, str]:
+def _scan(lines: list[str], matches, loose: bool) -> tuple[float | None, Notice | None]:
     """Walk the keywords in rank order, looking for one that owns an amount.
 
     Rank matters: ยอดสุทธิ and TOTAL come before ยอดรวม, so on a receipt carrying
@@ -219,7 +226,8 @@ def _scan(lines: list[str], matches, label: str) -> tuple[float | None, str]:
                 continue
             amounts = _money_on(line)
             if amounts:
-                return max(amounts), f"from the {keyword!r} line{label}"
+                code = "amount_from_keyword_loose" if loose else "amount_from_keyword"
+                return max(amounts), Notice(code, {"keyword": keyword})
             # Some layouts put the figure on the following line. Only trust that
             # when the next line is a lone amount: a column header like
             # "ลำดับ รายการสินค้า ราคา/หน่วย ราคารวม" also carries a total keyword
@@ -227,8 +235,10 @@ def _scan(lines: list[str], matches, label: str) -> tuple[float | None, str]:
             if index + 1 < len(lines):
                 amounts = _money_on(lines[index + 1])
                 if len(amounts) == 1:
-                    return amounts[0], f"from the line after {keyword!r}{label}"
-    return None, ""
+                    return amounts[0], Notice(
+                        "amount_from_next_line", {"keyword": keyword}
+                    )
+    return None, None
 
 
 def _excluded(compacted: str) -> bool:
@@ -243,7 +253,7 @@ def _excluded(compacted: str) -> bool:
 CHANGE_MARKERS = ("เงินทอน", "ทอน", "change")
 
 
-def _from_change(lines: list[str]) -> tuple[float | None, str]:
+def _from_change(lines: list[str]) -> tuple[float | None, Notice | None]:
     """Recover the total from a cash-and-change line: paid = tendered - change."""
     for line in lines:
         if not any(marker in compact(line.lower()) for marker in CHANGE_MARKERS):
@@ -253,11 +263,11 @@ def _from_change(lines: list[str]) -> tuple[float | None, str]:
             continue
         tendered, change = max(amounts), min(amounts)
         if tendered > change:
-            return round(tendered - change, 2), "tendered minus change"
-    return None, ""
+            return round(tendered - change, 2), Notice("amount_from_change")
+    return None, None
 
 
-def amount_from_lines(lines: list[str]) -> tuple[float | None, str]:
+def amount_from_lines(lines: list[str]) -> tuple[float | None, Notice]:
     """Best guess at the total, and why.
 
     Keyword lines win over everything, because the largest number on a receipt is
@@ -265,12 +275,12 @@ def amount_from_lines(lines: list[str]) -> tuple[float | None, str]:
     """
     lines = [normalise(line).strip() for line in lines if line.strip()]
 
-    amount, why = _scan(lines, lambda line, keyword: keyword in line, "")
+    amount, why = _scan(lines, lambda line, keyword: keyword in line, loose=False)
     if amount is not None:
         return amount, why
 
     # Nothing matched cleanly, so allow for OCR having mangled the keyword.
-    amount, why = _scan(lines, _fuzzy_contains, ", read loosely")
+    amount, why = _scan(lines, _fuzzy_contains, loose=True)
     if amount is not None:
         return amount, why
 
@@ -288,10 +298,10 @@ def amount_from_lines(lines: list[str]) -> tuple[float | None, str]:
     # number and a figure off a securities advice note. A confident wrong amount
     # is worse than a blank one here, because the preview exists to be checked
     # and a plausible number is exactly what a tired person waves through.
-    return None, "no amount found"
+    return None, Notice("amount_not_found")
 
 
-def parse_amount(text: str) -> tuple[float | None, str]:
+def parse_amount(text: str) -> tuple[float | None, Notice]:
     """The flat-text entry point, kept so the parser is testable without Vision."""
     return amount_from_lines(normalise(text).splitlines())
 
@@ -307,7 +317,9 @@ def _year(raw: int) -> int:
     return 2000 + raw
 
 
-def parse_date(text: str, today: dt.date | None = None) -> tuple[dt.date | None, str]:
+def parse_date(
+    text: str, today: dt.date | None = None
+) -> tuple[dt.date | None, Notice]:
     """Day-first, which is how Thai receipts print and how the Workbook reads."""
     body = normalise(text)
     today = today or dt.date.today()
@@ -328,21 +340,23 @@ def parse_date(text: str, today: dt.date | None = None) -> tuple[dt.date | None,
                 continue
             if abs((found - today).days) > 730:
                 continue  # a warranty date or a printed year, not this purchase
-            return found, f"read {match.group()!r}"
+            return found, Notice("date_read", {"text": match.group()})
 
     for name, month in THAI_MONTHS.items():
         match = re.search(rf"(\d{{1,2}})\s*{re.escape(name)}\.?\s*(\d{{2,4}})", body)
         if match:
             day, year = int(match.group(1)), _year(int(match.group(2)))
             try:
-                return dt.date(year, month, day), f"read {match.group()!r}"
+                return dt.date(year, month, day), Notice(
+                    "date_read", {"text": match.group()}
+                )
             except ValueError:
                 continue
 
-    return None, "no date found"
+    return None, Notice("date_not_found")
 
 
-def parse_description(text: str) -> tuple[str | None, str]:
+def parse_description(text: str) -> tuple[str | None, Notice]:
     """The merchant line, usually near the top and rarely useful verbatim."""
     for line in (line.strip() for line in normalise(text).splitlines()):
         if len(line) < 3 or len(line) > 60:
@@ -355,8 +369,8 @@ def parse_description(text: str) -> tuple[str | None, str]:
             continue
         if any(bad in line.lower() for bad in NOT_TOTAL):
             continue
-        return line, "first text-looking line, usually the shop name"
-    return None, "no description found"
+        return line, Notice("shop_seen", {"shop": line})
+    return None, Notice("shop_not_found")
 
 
 def read_layout(
@@ -379,28 +393,24 @@ def read_layout(
 
     body = "\n".join(lines)
     date, why_date = parse_date(body or text, today=today)
-    description, why_description = parse_description(body or text)
+    shop, why_shop = parse_description(body or text)
     return Reading(
         amount=amount,
         date=date,
-        description=description,
+        shop=shop,
         text=text or body,
-        notes=[
-            f"amount: {why_amount}",
-            f"date: {why_date}",
-            f"detail: {why_description}",
-        ],
+        notes=[why_amount, why_date, why_shop],
     )
 
 
 def read(text: str, today: dt.date | None = None) -> Reading:
     amount, why_amount = parse_amount(text)
     date, why_date = parse_date(text, today=today)
-    description, why_description = parse_description(text)
+    shop, why_shop = parse_description(text)
     return Reading(
         amount=amount,
         date=date,
-        description=description,
+        shop=shop,
         text=text,
-        notes=[f"amount: {why_amount}", f"date: {why_date}", f"detail: {why_description}"],
+        notes=[why_amount, why_date, why_shop],
     )
