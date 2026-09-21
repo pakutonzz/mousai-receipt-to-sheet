@@ -9,8 +9,8 @@ and [write cells with explicit types](../../docs/adr/0002-write-cells-with-expli
 
 ## Flow
 
-Form (or, later, a receipt photo) → preview the parsed values → pick the Fund →
-Confirm → one Entry appears in the correct row of the active Page.
+Photo or form → pick the Page and the requester → preview the parsed values →
+Confirm → one Entry appears in the correct row.
 
 Every field is editable in the preview. Nothing is ever written without a human
 confirming it.
@@ -35,18 +35,27 @@ confirming it.
 - A **Template** carries the column letters and the header marker for one Fund.
   เงินสดย่อย starts at column B, เงินฉุกเฉิน at column A, and the certificate
   sheets head their date column `วันที่` rather than `ว/ด/ป`.
-- The **active Page** comes from a hidden config tab, written lazily on the first
-  successful Confirm behind a "remember this Page" checkbox, ticked by default.
-  A Workbook without that tab simply asks which Page to use.
-- The preview always shows the target Page and row, and the user can override.
+- **The user picks a Page directly**, not a Fund: every writable Page in the
+  Workbook is offered, grouped by Fund, because only the person spending knows
+  whether this goes on เงินสดย่อย6 or a page opened this morning. The Fund
+  follows from the Page's name, so there is nothing to keep in step.
+- The hidden config tab still records the last Page used per Fund, written on
+  the first successful Confirm behind a "remember this Page" checkbox. It marks
+  that Page with ● and preselects it. It is a default, never a restriction.
+- The preview always shows the target Page and row, and the user can change
+  either before confirming.
 
 ## Writing an Entry
 
 - `spreadsheets.batchUpdate` / `updateCells`, each cell explicitly typed, with
   `fields: "userEnteredValue"` so a write cannot disturb formatting.
 - Date as a serial number. Balance as a live formula `=G{prev}-F{row}`. `"-"` in
-  the ยอดรับ column. Requester defaults to `"-"`. The note goes in the column
-  labelled ผู้อนุมัติ, which has never held an approver's name.
+  the ยอดรับ column. The note goes in the column labelled ผู้อนุมัติ, which has
+  never held an approver's name.
+- **Requester is a dropdown, harvested from the ผู้เบิก column** of the
+  Workbook's own Pages, most used first, plus `-` and a free-text option. No
+  list to maintain: a name typed by hand today is offered tomorrow, because by
+  then it is in the column.
 - **Date and sequence**: a new date writes the date and starts the sequence at 1;
   the same date as the row above leaves the date blank and continues the
   sequence. A date earlier than the row above warns but still appends.

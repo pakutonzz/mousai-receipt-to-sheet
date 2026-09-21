@@ -3,7 +3,6 @@
 {% block sub %}{{ workbook_title }} · {{ page }} · แถว {{ placement.row }}{% endblock %}
 {% block body %}
 <form method="post" action="/confirm">
-  <input type="hidden" name="fund" value="{{ fund }}">
   <input type="hidden" name="workbook_id" value="{{ workbook_id }}">
 
   <div class="card">
@@ -17,15 +16,29 @@
     <input type="text" inputmode="decimal" class="amount" id="amount" name="amount" value="{{ amount }}">
 
     <label for="requester">ผู้เบิก</label>
-    <input type="text" id="requester" name="requester" value="{{ requester }}">
+    <select id="requester" name="requester">
+      <option value="-" {% if requester in ("-", "", None) %}selected{% endif %}>-</option>
+      {% for r in requesters %}
+      <option value="{{ r }}" {% if r == requester %}selected{% endif %}>{{ r }}</option>
+      {% endfor %}
+      <option value="{{ other }}">อื่น ๆ (พิมพ์เอง)</option>
+    </select>
+    <input type="text" id="requester_other" name="requester_other" value=""
+           placeholder="พิมพ์ชื่อผู้เบิก" hidden>
 
     <label for="note">หมายเหตุ</label>
     <input type="text" id="note" name="note" value="{{ note }}">
 
-    <label for="page">หน้า</label>
-    <select id="page" name="page">
-      {% for c in candidates %}
-      <option value="{{ c }}" {% if c == page %}selected{% endif %}>{{ c }}</option>
+    <label for="page">หน้าที่จะบันทึก</label>
+    <select id="page" name="page" required>
+      {% for g in groups %}
+      <optgroup label="{{ g.fund }}">
+        {% for p in g.pages %}
+        <option value="{{ p.name }}" {% if p.name == selected_page %}selected{% endif %}>
+          {{ p.name }}{% if p.remembered %} ●{% endif %}
+        </option>
+        {% endfor %}
+      </optgroup>
       {% endfor %}
     </select>
   </div>
@@ -70,4 +83,19 @@
   <button type="submit">ยืนยันบันทึก</button>
 </form>
 <form method="get" action="/"><button type="submit" class="quiet">ยกเลิก</button></form>
+<script>
+(function () {
+  var other = "{{ other }}";
+  var pick = document.getElementById("requester");
+  var typed = document.getElementById("requester_other");
+  if (!pick || !typed) return;
+  function sync() {
+    var manual = pick.value === other;
+    typed.hidden = !manual;
+    if (manual) typed.focus();
+  }
+  pick.addEventListener("change", sync);
+  sync();
+})();
+</script>
 {% endblock %}

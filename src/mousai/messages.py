@@ -40,6 +40,8 @@ TH = {
     "amount_required": "กรุณาใส่จำนวนเงินที่มากกว่าศูนย์",
     "bad_date": "วันที่หรือจำนวนเงินไม่ถูกต้อง",
     "unknown_fund": "ไม่รู้จักประเภทเงิน {fund}",
+    "unknown_page": "{page} ไม่ใช่หน้าที่เขียนได้",
+    "no_pages": "ไฟล์ {workbook} ไม่มีหน้าที่เขียนได้",
     "image_too_large": "ไฟล์รูปใหญ่เกิน {limit}MB",
     "not_an_image": "อ่านไฟล์ {kind} ไม่ได้ กรุณาใช้รูปภาพ",
 }
@@ -62,6 +64,8 @@ EN = {
     "amount_required": "an amount is required, and must be more than zero",
     "bad_date": "the date or the amount was not usable",
     "unknown_fund": "unknown fund {fund}",
+    "unknown_page": "{page} is not a writable Page",
+    "no_pages": "{workbook} has no writable Pages",
     "image_too_large": "that image is larger than {limit}MB",
     "not_an_image": "cannot read {kind}; please use an image",
 }

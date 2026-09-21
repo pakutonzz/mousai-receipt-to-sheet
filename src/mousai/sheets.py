@@ -18,8 +18,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .messages import Notice, english
-from .page import Formula, Page, column_index
-from .templates import Template
+from .page import Formula, Page, PageError, column_index
+from .templates import Template, fund_for_page
 
 SCOPES = [
     "https://www.googleapis.com/auth/spreadsheets",
@@ -236,6 +236,70 @@ class Workbook:
         return [n for n in self.sheet_names() if n.startswith(template.fund)]
 
     # -- reading -----------------------------------------------------------
+
+    def grids(self, sheet_names: list[str]) -> dict[str, list[list]]:
+        """Several sheets in one call, so scanning the Workbook is not N calls."""
+        out: dict[str, list[list]] = {}
+        for start in range(0, len(sheet_names), 20):
+            chunk = sheet_names[start : start + 20]
+            response = (
+                self._service.spreadsheets()
+                .values()
+                .batchGet(
+                    spreadsheetId=self.id,
+                    ranges=[quote(name) for name in chunk],
+                    valueRenderOption="UNFORMATTED_VALUE",
+                    dateTimeRenderOption="SERIAL_NUMBER",
+                )
+                .execute()
+            )
+            for name, block in zip(chunk, response.get("valueRanges", [])):
+                out[name] = block.get("values", [])
+        return out
+
+    def writable_pages(self) -> list[tuple[str, Template]]:
+        """Every sheet that looks like a Page, in Workbook order.
+
+        This is what the picker offers: the user chooses a Page directly rather
+        than a Fund, because only they know whether this month's spending goes
+        on เงินสดย่อย6 or a page someone opened this morning.
+        """
+        found = []
+        for name in self.sheet_names():
+            if name.startswith("_"):
+                continue
+            template = fund_for_page(name)
+            if template is not None:
+                found.append((name, template))
+        return found
+
+    def requesters(self) -> list[str]:
+        """Names already used in the ผู้เบิก column, most frequent first.
+
+        Harvested rather than stored: whoever is in the Workbook is offered, and
+        a name typed by hand today is in the list tomorrow because it is then in
+        the column. Nothing to maintain.
+        """
+        pages = self.writable_pages()
+        grids = self.grids([name for name, _ in pages])
+        counts: dict[str, int] = {}
+        for name, template in pages:
+            grid = grids.get(name, [])
+            try:
+                page = Page(name, template, grid)
+            except PageError:
+                continue
+            column = column_index(template.requester) - 1
+            for number in range(page.first_row, page.last_row + 1):
+                if number - 1 >= len(grid):
+                    break
+                line = grid[number - 1]
+                if column >= len(line):
+                    continue
+                value = str(line[column]).strip()
+                if value and value not in ("-", "None"):
+                    counts[value] = counts.get(value, 0) + 1
+        return sorted(counts, key=lambda n: (-counts[n], n))
 
     def grid(self, sheet_name: str) -> list[list]:
         response = (

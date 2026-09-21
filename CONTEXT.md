@@ -22,7 +22,7 @@ _Avoid_: Expense, withdrawal, debit
 What remains in a Fund after an Entry. Each Entry's balance is derived from the one above it, so Entries in a Page form a chain.
 
 **Requester** (ผู้เบิก):
-The person who spent the money and is claiming it back.
+The person who spent the money and is claiming it back. Who counts as one is not configured anywhere: the names are whoever already appears in the ผู้เบิก column of the Workbook.
 _Avoid_: Payer, employee, user
 
 ### The workbook
@@ -35,7 +35,7 @@ One detail sheet, e.g. `เงินสดย่อย6`. A Page is one printabl
 _Avoid_: Sheet, tab, worksheet (those name the container, not the document)
 
 **Active Page**:
-The one Page per Fund that new Entries are written to. Which Page is active is declared, never inferred: tab order and sheet names do not track it.
+The Page per Fund that an Entry goes to unless someone picks another. It is declared, never inferred: tab order and sheet names do not track it. It is a starting suggestion, not a restriction — any Page in the Workbook can be written to.
 
 **Data region** (พื้นที่รายการ):
 The band of rows on a Page that Entries may occupy, bounded above by the column header and below by the totals line. Rows outside it — headings, totals, signatures — are never written to. When it is full, the Page is closed and a new one is opened by hand.

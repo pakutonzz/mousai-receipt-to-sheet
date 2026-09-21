@@ -14,18 +14,25 @@
   </div>
 
   <div class="card">
-    <label>ประเภทเงิน</label>
-    <div class="funds">
-      {% for f in funds %}
-      <label><input type="radio" name="fund" value="{{ f }}"
-        {% if loop.first %}checked{% endif %}><span>{{ f }}</span></label>
-      {% endfor %}
-    </div>
-
     <label for="workbook_id">ไฟล์</label>
     <select id="workbook_id" name="workbook_id">
       {% for w in workbooks %}<option value="{{ w.id }}">{{ w.title }}</option>{% endfor %}
     </select>
+
+    <label for="page">หน้าที่จะบันทึก</label>
+    <select id="page" name="page" required>
+      {% for g in groups %}
+      <optgroup label="{{ g.fund }}">
+        {% for p in g.pages %}
+        <option value="{{ p.name }}" {% if p.name == selected_page %}selected{% endif %}>
+          {{ p.name }}{% if p.remembered %} ●{% endif %}
+        </option>
+        {% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+
+    <div class="sub">● คือหน้าที่ใช้อยู่ล่าสุด เลือกหน้าอื่นได้ตามต้องการ</div>
 
     <label for="entry_date">วันที่</label>
     <input type="date" id="entry_date" name="entry_date" value="{{ today }}">
@@ -37,7 +44,15 @@
     <input type="text" inputmode="decimal" class="amount" id="amount" name="amount" placeholder="0.00">
 
     <label for="requester">ผู้เบิก</label>
-    <input type="text" id="requester" name="requester" value="-">
+    <select id="requester" name="requester">
+      <option value="-" {% if requester in ("-", "", None) %}selected{% endif %}>-</option>
+      {% for r in requesters %}
+      <option value="{{ r }}" {% if r == requester %}selected{% endif %}>{{ r }}</option>
+      {% endfor %}
+      <option value="{{ other }}">อื่น ๆ (พิมพ์เอง)</option>
+    </select>
+    <input type="text" id="requester_other" name="requester_other" value=""
+           placeholder="พิมพ์ชื่อผู้เบิก" hidden>
 
     <label for="note">หมายเหตุ</label>
     <input type="text" id="note" name="note" placeholder="ไม่บังคับ">
@@ -46,7 +61,60 @@
   <button type="submit">ตรวจสอบก่อนบันทึก</button>
 </form>
 <div class="foot">
-  {% if workbooks %}{{ workbooks|length }} ไฟล์ที่เขียนได้{% else %}ไม่พบไฟล์{% endif %}
-  · OCR: {{ ocr_name }}
+  {{ workbooks|length }} ไฟล์ · OCR: {{ ocr_name }}
 </div>
+<script>
+(function () {
+  var other = "{{ other }}";
+  function wireRequester() {
+    var pick = document.getElementById("requester");
+    var typed = document.getElementById("requester_other");
+    if (!pick || !typed) return;
+    function sync() {
+      var manual = pick.value === other;
+      typed.hidden = !manual;
+      if (manual) typed.focus();
+    }
+    pick.addEventListener("change", sync);
+    sync();
+  }
+  wireRequester();
+
+  var book = document.getElementById("workbook_id");
+  if (book) book.addEventListener("change", function () {
+    fetch("/api/pages?workbook_id=" + encodeURIComponent(book.value))
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (data.error) return;
+        var page = document.getElementById("page");
+        page.innerHTML = "";
+        data.groups.forEach(function (g) {
+          var group = document.createElement("optgroup");
+          group.label = g.fund;
+          g.pages.forEach(function (p) {
+            var option = document.createElement("option");
+            option.value = p.name;
+            option.textContent = p.name + (p.remembered ? " \u25cf" : "");
+            if (p.remembered) option.selected = true;
+            group.appendChild(option);
+          });
+          page.appendChild(group);
+        });
+        var pick = document.getElementById("requester");
+        var current = pick.value;
+        pick.innerHTML = "";
+        ["-"].concat(data.requesters).forEach(function (name) {
+          var option = document.createElement("option");
+          option.value = name; option.textContent = name;
+          pick.appendChild(option);
+        });
+        var manual = document.createElement("option");
+        manual.value = other; manual.textContent = "อื่น ๆ (พิมพ์เอง)";
+        pick.appendChild(manual);
+        pick.value = current || "-";
+      })
+      .catch(function () {});
+  });
+})();
+</script>
 {% endblock %}

@@ -19,6 +19,7 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from mousai import PETTY_CASH, Formula, Page  # noqa: E402
+from mousai import EMERGENCY  # noqa: E402
 from mousai.sheets import (  # noqa: E402
     CONFIG_SHEET,
     Sheets,
@@ -30,7 +31,8 @@ from mousai.sheets import (  # noqa: E402
     quote,
     split_ref,
 )
-from test_page import grid_for  # noqa: E402
+from mousai.page import column_index  # noqa: E402
+from test_page import BASELINE, grid_for  # noqa: E402
 
 
 class _Execute:
@@ -70,6 +72,13 @@ class FakeService:
             )
         name = range.split("!")[0].strip("'").replace("''", "'")
         return _Execute({"values": self.grids.get(name, [])})
+
+    def batchGet(self, spreadsheetId=None, ranges=None, **kwargs):
+        blocks = []
+        for r in ranges or []:
+            name = r.split("!")[0].strip("'").replace("''", "'")
+            blocks.append({"values": self.grids.get(name, [])})
+        return _Execute({"valueRanges": blocks})
 
     def update(self, spreadsheetId=None, range=None, valueInputOption=None, body=None):
         self.value_writes.append((range, body["values"]))
@@ -267,3 +276,58 @@ class ConfigTab(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WritablePages(unittest.TestCase):
+    def build(self):
+        names = [
+            "แจกแจง", "ย่อย", "ฉฉ", "PT",
+            "เงินสดย่อย5", "เงินสดย่อย6", "เงินฉุกเฉิน3",
+            "ใบรับรองแทนสดย่อย5", CONFIG_SHEET,
+        ]
+        service = FakeService(
+            {n: grid_for(n) for n in names if n in BASELINE["sheets"]},
+            {n: i for i, n in enumerate(names)},
+        )
+        return Workbook(service, "fake-id"), service
+
+    def test_offers_pages_from_both_funds(self):
+        workbook, _ = self.build()
+        names = [n for n, _ in workbook.writable_pages()]
+        self.assertEqual(names, ["เงินสดย่อย5", "เงินสดย่อย6", "เงินฉุกเฉิน3"])
+
+    def test_skips_ledgers_certificates_and_the_config_tab(self):
+        workbook, _ = self.build()
+        names = [n for n, _ in workbook.writable_pages()]
+        for excluded in ("ย่อย", "ฉฉ", "PT", "แจกแจง", "ใบรับรองแทนสดย่อย5", CONFIG_SHEET):
+            self.assertNotIn(excluded, names)
+
+    def test_each_page_carries_its_own_template(self):
+        workbook, _ = self.build()
+        found = dict(workbook.writable_pages())
+        self.assertEqual(found["เงินสดย่อย6"], PETTY_CASH)
+        self.assertEqual(found["เงินฉุกเฉิน3"], EMERGENCY)
+
+
+class Requesters(unittest.TestCase):
+    def test_harvested_from_the_column_most_used_first(self):
+        service = FakeService(
+            {n: grid_for(n) for n in ("เงินสดย่อย6", "เงินฉุกเฉิน3")},
+            {"เงินสดย่อย6": 1, "เงินฉุกเฉิน3": 2},
+        )
+        found = Workbook(service, "fake-id").requesters()
+        self.assertEqual(found[0], "Monny")
+        self.assertNotIn("-", found)
+        self.assertNotIn("", found)
+
+    def test_a_name_typed_once_shows_up_next_time(self):
+        """Why there is no separate list to maintain."""
+        grid = grid_for("เงินสดย่อย6")
+        grid[20][column_index(PETTY_CASH.requester) - 1] = "พี่นวล"
+        grid[20][column_index(PETTY_CASH.description) - 1] = "ค่ารถ"
+        service = FakeService({"เงินสดย่อย6": grid}, {"เงินสดย่อย6": 1})
+        self.assertIn("พี่นวล", Workbook(service, "fake-id").requesters())
+
+    def test_a_workbook_with_no_pages_yields_no_names(self):
+        service = FakeService({}, {"แจกแจง": 1})
+        self.assertEqual(Workbook(service, "fake-id").requesters(), [])

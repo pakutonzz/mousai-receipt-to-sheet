@@ -5,3 +5,7 @@ secrets/
 .env
 __pycache__/
 *.pyc
+
+# Snapshot of the Workbook: contains named individuals. Regenerate locally with
+# scripts/extract_baseline.py. See README.
+tests/fixtures/baseline.json

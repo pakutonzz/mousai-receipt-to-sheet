@@ -3,6 +3,10 @@
 Three steps, and the middle one is the point of the whole system — OCR never
 writes anything. It fills in a form that a person corrects and confirms.
 
+The user picks a Page directly rather than a Fund: only they know whether this
+spend belongs on เงินสดย่อย6 or on a page someone opened this morning. The Fund
+follows from the Page's name, so there is nothing to keep in step.
+
 The Sheets adapter and the OCR reader are injected, so the whole UI is testable
 against fakes with no network. Uploaded images are held in memory for the length
 of one request and never stored.
@@ -14,20 +18,23 @@ import datetime as dt
 from pathlib import Path
 
 from fastapi import FastAPI, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from fastapi.templating import Jinja2Templates
 
 from . import ocr
 from .messages import Notice, thai
 from .page import PageError
 from .receipt import Reading
-from .sheets import Sheets, SheetsError, load_env
-from .templates import BY_FUND
+from .sheets import Sheets, SheetsError
+from .templates import BY_FUND, fund_for_page
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "views"))
 
 ALLOWED_IMAGES = {"image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"}
 MAX_IMAGE_BYTES = 12 * 1024 * 1024
+
+# The sentinel the requester dropdown uses for "a name not in the list".
+OTHER = "__other__"
 
 
 def _decimal(raw: str | None) -> float | None:
@@ -53,6 +60,24 @@ def _date(raw: str | None) -> dt.date | None:
     return None
 
 
+def _requester(choice: str, typed: str) -> str:
+    """The dropdown wins unless it says 'someone else'."""
+    if choice == OTHER:
+        return typed.strip() or "-"
+    return choice.strip() or "-"
+
+
+def group_pages(pages, remembered: dict[str, str]) -> list[dict]:
+    """Pages for the picker, grouped by Fund and flagged if remembered."""
+    groups: dict[str, dict] = {}
+    for name, template in pages:
+        group = groups.setdefault(template.fund, {"fund": template.fund, "pages": []})
+        group["pages"].append(
+            {"name": name, "remembered": remembered.get(template.fund) == name}
+        )
+    return list(groups.values())
+
+
 def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
     app = FastAPI(title="mousai")
     state: dict = {"sheets": sheets, "reader": reader}
@@ -73,6 +98,19 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
             request, "error.html", {"message": thai(notice)}, status_code=status
         )
 
+    def survey(workbook):
+        """What the pickers need: the Pages, which are remembered, and who spends."""
+        pages = workbook.writable_pages()
+        remembered = {}
+        for fund in BY_FUND:
+            try:
+                chosen = workbook.active_page(fund)
+            except SheetsError:
+                chosen = None
+            if chosen:
+                remembered[fund] = chosen
+        return pages, remembered, workbook.requesters()
+
     @app.get("/health")
     def health():
         return {"ok": True, "ocr": get_reader().name}
@@ -81,100 +119,122 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
     def index(request: Request):
         try:
             books = get_sheets().workbooks()
+            if not books:
+                return fail(request, Notice("no_workbooks"))
+            workbook = get_sheets().open(books[0].id)
+            pages, remembered, requesters = survey(workbook)
         except SheetsError as error:
             return fail(request, error.notice)
+        if not pages:
+            return fail(request, Notice("no_pages", {"workbook": workbook.title}))
+
+        default = next(
+            (p["name"] for g in group_pages(pages, remembered) for p in g["pages"] if p["remembered"]),
+            pages[-1][0],
+        )
         return TEMPLATES.TemplateResponse(
             request,
             "index.html",
             {
-                "funds": list(BY_FUND),
                 "workbooks": books,
+                "groups": group_pages(pages, remembered),
+                "selected_page": default,
+                "requesters": requesters,
+                "other": OTHER,
                 "ocr_name": get_reader().name,
                 "today": dt.date.today().isoformat(),
             },
         )
 
+    @app.get("/api/pages")
+    def api_pages(workbook_id: str):
+        """Repopulate the Page and requester pickers when the Workbook changes."""
+        try:
+            workbook = get_sheets().open(workbook_id)
+            pages, remembered, requesters = survey(workbook)
+        except SheetsError as error:
+            return JSONResponse({"error": thai(error.notice)}, status_code=400)
+        return {
+            "groups": group_pages(pages, remembered),
+            "requesters": requesters,
+        }
+
     @app.post("/preview", response_class=HTMLResponse)
     async def preview(
         request: Request,
-        fund: str = Form(...),
         workbook_id: str = Form(...),
-        page: str = Form(""),
+        page: str = Form(...),
         entry_date: str = Form(""),
         description: str = Form(""),
         amount: str = Form(""),
         requester: str = Form("-"),
+        requester_other: str = Form(""),
         note: str = Form(""),
         receipt: UploadFile | None = None,
     ):
-        if fund not in BY_FUND:
-            return fail(request, Notice("unknown_fund", {"fund": fund}))
-        template = BY_FUND[fund]
+        template = fund_for_page(page)
+        if template is None:
+            return fail(request, Notice("unknown_page", {"page": page}))
 
         reading = Reading()
         if receipt is not None and receipt.filename:
             data = await receipt.read()
             if len(data) > MAX_IMAGE_BYTES:
-                return fail(request, Notice("image_too_large", {"limit": MAX_IMAGE_BYTES // (1024 * 1024)}))
+                return fail(
+                    request,
+                    Notice("image_too_large", {"limit": MAX_IMAGE_BYTES // (1024 * 1024)}),
+                )
             if receipt.content_type not in ALLOWED_IMAGES:
-                return fail(request, Notice("not_an_image", {"kind": receipt.content_type or "?"}))
+                return fail(
+                    request, Notice("not_an_image", {"kind": receipt.content_type or "?"})
+                )
             reading = get_reader().read_image(data, receipt.content_type)
 
         # Anything the user typed wins over anything OCR guessed.
         chosen_amount = _decimal(amount) or reading.amount
         chosen_date = _date(entry_date) or reading.date or dt.date.today()
         chosen_description = description.strip() or reading.description or ""
+        chosen_requester = _requester(requester, requester_other)
+
+        if chosen_amount is None or chosen_amount <= 0:
+            return fail(request, Notice("amount_required"))
 
         try:
             workbook = get_sheets().open(workbook_id)
-            target = page or workbook.active_page(fund) or ""
-            candidates = workbook.pages_for(template)
-            if not target:
-                return TEMPLATES.TemplateResponse(
-                    request,
-                    "choose_page.html",
-                    {
-                        "fund": fund,
-                        "workbook_id": workbook_id,
-                        "workbook_title": workbook.title,
-                        "candidates": candidates,
-                        "entry_date": chosen_date.isoformat(),
-                        "description": chosen_description,
-                        "amount": chosen_amount or "",
-                        "requester": requester,
-                        "note": note,
-                    },
-                )
-            if chosen_amount is None or chosen_amount <= 0:
-                return fail(request, Notice("amount_required"))
-
-            live = workbook.page(target, template)
+            pages, remembered, requesters = survey(workbook)
+            live = workbook.page(page, template)
             placement = live.place(
                 on=chosen_date,
                 description=chosen_description or "(no detail)",
                 amount=chosen_amount,
-                requester=requester.strip() or "-",
+                requester=chosen_requester,
                 note=note.strip() or None,
             )
         except (SheetsError, PageError) as error:
             return fail(request, error.notice)
 
+        if chosen_requester not in requesters and chosen_requester != "-":
+            requesters = [chosen_requester, *requesters]
+
         return TEMPLATES.TemplateResponse(
             request,
             "preview.html",
             {
-                "fund": fund,
+                "fund": template.fund,
                 "workbook_id": workbook_id,
                 "workbook_title": workbook.title,
-                "page": target,
-                "candidates": candidates,
+                "page": page,
+                "selected_page": page,
+                "groups": group_pages(pages, remembered),
+                "requesters": requesters,
+                "other": OTHER,
                 "placement": placement,
                 "warnings": [thai(w) for w in placement.warnings],
                 "previous": live.last_entry,
                 "entry_date": chosen_date.isoformat(),
                 "description": chosen_description,
                 "amount": chosen_amount,
-                "requester": requester,
+                "requester": chosen_requester,
                 "note": note,
                 "reading": reading,
             },
@@ -183,19 +243,19 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
     @app.post("/confirm", response_class=HTMLResponse)
     def confirm(
         request: Request,
-        fund: str = Form(...),
         workbook_id: str = Form(...),
         page: str = Form(...),
         entry_date: str = Form(...),
         description: str = Form(...),
         amount: str = Form(...),
         requester: str = Form("-"),
+        requester_other: str = Form(""),
         note: str = Form(""),
         remember: str = Form(""),
     ):
-        if fund not in BY_FUND:
-            return fail(request, Notice("unknown_fund", {"fund": fund}))
-        template = BY_FUND[fund]
+        template = fund_for_page(page)
+        if template is None:
+            return fail(request, Notice("unknown_page", {"page": page}))
         value = _decimal(amount)
         when = _date(entry_date)
         if value is None or value <= 0 or when is None:
@@ -210,12 +270,12 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
                 on=when,
                 description=description.strip() or "(no detail)",
                 amount=value,
-                requester=requester.strip() or "-",
+                requester=_requester(requester, requester_other),
                 note=note.strip() or None,
             )
             workbook.append(live, placement)
             if remember:
-                workbook.remember_page(fund, page)
+                workbook.remember_page(template.fund, page)
         except (SheetsError, PageError) as error:
             return fail(request, error.notice)
 

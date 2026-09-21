@@ -74,3 +74,16 @@ EMERGENCY = Template(
 CERTIFICATE_HEADER_MARKER = "วันที่"
 
 BY_FUND: dict[str, Template] = {t.fund: t for t in (PETTY_CASH, EMERGENCY)}
+
+
+def fund_for_page(sheet_name: str) -> Template | None:
+    """The Template a Page belongs to, from its name.
+
+    Pages are named after their Fund with a number appended, so the name is
+    enough to pick the column layout. Whether the sheet really is a Page is
+    settled by reading it: the marker rows are the truth.
+    """
+    for template in BY_FUND.values():
+        if sheet_name.startswith(template.fund):
+            return template
+    return None
