@@ -29,7 +29,7 @@ EXPECTED = FIXTURES / "expected.json"
 
 # Every sample with a known total and no recorded excuse must pass. Raise this by
 # fixing the parser, never by lowering it.
-REQUIRED = 20
+REQUIRED = 22
 
 
 def load() -> list[tuple[str, dict, dict]]:
@@ -63,7 +63,7 @@ class SampleReceipts(unittest.TestCase):
     def test_every_known_total_is_read_correctly(self):
         misses = []
         for name, fixture, expectation in self.samples:
-            if expectation.get("hard") or expectation.get("amount") is None:
+            if expectation.get("hard"):
                 continue
             with self.subTest(sample=name):
                 got = amount_for(fixture)
@@ -74,11 +74,7 @@ class SampleReceipts(unittest.TestCase):
 
     def test_the_required_number_of_samples_is_still_covered(self):
         """Guards against a fixture or an expectation quietly disappearing."""
-        scoreable = [
-            name
-            for name, _, e in self.samples
-            if not e.get("hard") and e.get("amount") is not None
-        ]
+        scoreable = [name for name, _, e in self.samples if not e.get("hard")]
         self.assertGreaterEqual(len(scoreable), REQUIRED, scoreable)
 
     def test_report(self):
@@ -89,13 +85,11 @@ class SampleReceipts(unittest.TestCase):
             want = expectation.get("amount")
             if expectation.get("hard"):
                 mark = "known-hard"
-            elif want is None:
-                mark = "no total in image"
             else:
                 scoreable += 1
                 ok = got == want
                 right += ok
-                mark = "ok" if ok else "MISS"
+                mark = ("ok" if want is not None else "ok (blank)") if ok else "MISS"
             lines.append(f"    {mark:>18}  {name:<38} want={want!r:<10} got={got!r}")
         print(f"\n\n  receipt samples: {right}/{scoreable} correct\n")
         print("\n".join(lines))

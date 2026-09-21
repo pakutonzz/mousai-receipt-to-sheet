@@ -283,16 +283,11 @@ def amount_from_lines(lines: list[str]) -> tuple[float | None, str]:
     if amount is not None:
         return amount, why
 
-    candidates = [
-        amount
-        for line in lines
-        if not _excluded(compact(line.lower()))
-        for amount in _money_on(line)
-        # Long digit runs are ids and phone numbers, not money.
-        if 0 < amount < 1_000_000 and not re.search(r"\d{7,}", line)
-    ]
-    if candidates:
-        return max(candidates), "largest plausible number; no total line found"
+    # Deliberately no "largest number" guess. Across 24 real receipts that
+    # fallback was never once right — it returned shop branch numbers, a receipt
+    # number and a figure off a securities advice note. A confident wrong amount
+    # is worse than a blank one here, because the preview exists to be checked
+    # and a plausible number is exactly what a tired person waves through.
     return None, "no amount found"
 
 

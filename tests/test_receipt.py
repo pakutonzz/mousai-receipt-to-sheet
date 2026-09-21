@@ -63,10 +63,13 @@ class Amounts(unittest.TestCase):
         self.assertEqual(amount, 1558.00)
         self.assertIn("after", why)
 
-    def test_falls_back_to_the_largest_plausible_number(self):
+    def test_leaves_it_blank_when_no_total_line_is_found(self):
+        """Across 24 real receipts, guessing at the largest number was never
+        once right. A blank field is safer than a plausible wrong one in a
+        preview whose whole job is to be checked."""
         amount, why = parse_amount("ก๋วยเตี๋ยว 60.00\nน้ำ 15.00\n")
-        self.assertEqual(amount, 60.00)
-        self.assertIn("largest", why)
+        self.assertIsNone(amount)
+        self.assertIn("no amount", why)
 
     def test_ignores_tax_ids_and_phone_numbers(self):
         amount, _ = parse_amount(

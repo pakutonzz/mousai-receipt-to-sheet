@@ -55,7 +55,7 @@ and you type the fields. Receipt reading is never load-bearing.
 
 **Measured, not assumed.** `tests/fixtures/receipts/` holds Vision's real output for the
 24 images in `sample/`, with the true total for each read off the image by eye in
-`expected.json`. The parser gets **20 of 20** right where a total is present and legible
+`expected.json`. The parser gets **22 of 22** right — every total that is present and legible, and a blank on the two images that have no total to find
 — 7-Eleven, Tops, Central, two hospitals, a vet, a school and two invoice templates. Two
 are marked known-hard and do not fail the build, both because Vision loses the figure or
 its label before any rule could help. Run `python -m unittest discover -s tests` and the
