@@ -1,23 +1,99 @@
 {
-  "_README": "Ground truth for the sample receipts, read off the images by eye. `null` means the total is not present in what Vision captured, so there is nothing to get right. `hard` marks a case we do not expect to pass and explains why, so a failure there is a known limit rather than a surprise.",
-
-  "7-11-110571160":                      {"amount": 69.00,    "note": "Total ( 5 ) 69.00, under Sub Total 76.00"},
-  "7-11-images":                         {"amount": 381.00,   "note": "Total ( 129 ) 381.00, under Sub Total 389.00"},
-  "7-11-images (1)":                     {"amount": 299.00,   "note": "blurred; tendered 300.00 less change 1.00"},
-  "7-11-o6wslkqmdJjElxi6SMp-o":          {"amount": 134.00,   "note": "Total ( 9 )"},
-  "7-11-ocry4h3xsDvXLhR6EmN-o":          {"amount": 135.00,   "note": "Total ( 18 )"},
-  "7-11-qbqilv33gw7jDOX8mPUk-o":         {"amount": 100.00,   "note": "ยอดสุทธิ 100.00, not the ยอดรวม 111.00 above it; thumb over the ย"},
-  "7-11-r4wyii88gMnpSG1ILeo-o":          {"amount": 220.00,   "note": "ยอดรวม 220.00, no net line below"},
-  "7-11-skd1cw1flcrk11pwar7sT-o":        {"amount": 70.00,    "note": "pre-order slip; ยอดสุทธิ 70.00, deposit and outstanding are not the price"},
-
-  "mix-1128w-4zjUr74AdjM":               {"amount": 1300.00,  "note": "invoice template; ราคารวม 1,300.00"},
-  "mix-1131w-B0MvtbDvMNk":               {"amount": 20000.00, "note": "invoice template; จำนวนเงินรวมทั้งสิ้น 20,000.-"},
-  "mix-1390071336-image-o":              {"amount": 514.00,   "note": "Grand Total"},
-  "mix-bc1dd2843de14e6bb900c7f51a6f2cf0":{"amount": 25.00,    "note": "Tops Market; Total 25.00 after a 10.00 coupon"},
-  "mix-images":                          {"amount": 149.00,   "note": "รวมสุทธิ 149.00"},
-  "mix-images (2)":                      {"amount": 100.00,   "note": "Total 100"},
-  "mix-o42ujc224YmoWbaTpgj-o":           {"amount": 2710.00,  "hard": "handwritten delivery order; Vision splits the figure into 'Total 2,7 10', so the digits are gone before the parser sees them"},
-  "mix-pdm0lf21u2P9E6uhwi-o":            {"amount": 134.00,   "note": "Central Food Hall; Total 134.00"},
-  "mix-qh039tkmjJIOqS68sGT-o":           {"amount": null,     "note": "online order note; the photo is cropped above the total, so nothing to find"},
-  "mix-word_workshop11":                 {"amount": 650.00,   "note": "school receipt; รวม 650.00"}
+ "_README": "Ground truth for the sample receipts, read off the images by eye. `null` means the total is not present in what Vision captured, so there is nothing to get right. `hard` marks a case we do not expect to pass and explains why, so a failure there is a known limit rather than a surprise.",
+ "7-11-110571160": {
+  "amount": 69.0,
+  "note": "Total ( 5 ) 69.00, under Sub Total 76.00"
+ },
+ "7-11-images": {
+  "amount": 381.0,
+  "note": "Total ( 129 ) 381.00, under Sub Total 389.00"
+ },
+ "7-11-images (1)": {
+  "amount": 299.0,
+  "note": "blurred; tendered 300.00 less change 1.00"
+ },
+ "7-11-o6wslkqmdJjElxi6SMp-o": {
+  "amount": 134.0,
+  "note": "Total ( 9 )"
+ },
+ "7-11-ocry4h3xsDvXLhR6EmN-o": {
+  "amount": 135.0,
+  "note": "Total ( 18 )"
+ },
+ "7-11-qbqilv33gw7jDOX8mPUk-o": {
+  "amount": 100.0,
+  "note": "ยอดสุทธิ 100.00, not the ยอดรวม 111.00 above it; thumb over the ย"
+ },
+ "7-11-r4wyii88gMnpSG1ILeo-o": {
+  "amount": 220.0,
+  "note": "ยอดรวม 220.00, no net line below"
+ },
+ "7-11-skd1cw1flcrk11pwar7sT-o": {
+  "amount": 70.0,
+  "note": "pre-order slip; ยอดสุทธิ 70.00, deposit and outstanding are not the price"
+ },
+ "mix-1128w-4zjUr74AdjM": {
+  "amount": 1300.0,
+  "note": "invoice template; ราคารวม 1,300.00"
+ },
+ "mix-1131w-B0MvtbDvMNk": {
+  "amount": 20000.0,
+  "note": "invoice template; จำนวนเงินรวมทั้งสิ้น 20,000.-"
+ },
+ "mix-1390071336-image-o": {
+  "amount": 514.0,
+  "note": "Grand Total"
+ },
+ "mix-bc1dd2843de14e6bb900c7f51a6f2cf0": {
+  "amount": 25.0,
+  "note": "Tops Market; Total 25.00 after a 10.00 coupon"
+ },
+ "mix-images": {
+  "amount": 149.0,
+  "note": "รวมสุทธิ 149.00"
+ },
+ "mix-images (2)": {
+  "amount": 100.0,
+  "note": "Total 100"
+ },
+ "mix-o42ujc224YmoWbaTpgj-o": {
+  "amount": 2710.0,
+  "hard": "handwritten delivery order; Vision splits the figure into 'Total 2,7 10', so the digits are gone before the parser sees them"
+ },
+ "mix-pdm0lf21u2P9E6uhwi-o": {
+  "amount": 134.0,
+  "note": "Central Food Hall; Total 134.00"
+ },
+ "mix-qh039tkmjJIOqS68sGT-o": {
+  "amount": null,
+  "note": "online order note; the photo is cropped above the total, so nothing to find"
+ },
+ "mix-word_workshop11": {
+  "amount": 650.0,
+  "note": "school receipt; รวม 650.00"
+ },
+ "mix-Examble_reciept": {
+  "amount": 1560.0,
+  "hard": "Chatchai Electronics; 1,475.00 goods + 85.00 shipping = 1,560.00, but Vision reads the grand-total label as a second 'ค่าจัดส่ง', so the true total line carries no keyword and the parser stops at the goods subtotal"
+ },
+ "mix-image-2": {
+  "amount": 1140.0,
+  "note": "ราคารวมภาษีมูลค่าเพิ่ม 1140.00 = 600.00 goods + 540.00 shipping; the plain 'รวม 600.00' above it is the subtotal"
+ },
+ "mix-images (1)": {
+  "amount": 2030.0,
+  "note": "hospital receipt; รวมทั้งสิ้น 2,030.00, confirmed in words by สองพันสามสิบบาทถ้วน"
+ },
+ "mix-images (3)": {
+  "amount": null,
+  "note": "TSD dividend and withholding-tax advice, not a purchase receipt; there is no amount paid to record"
+ },
+ "mix-images (4)": {
+  "amount": 935.0,
+  "note": "veterinary clinic; ยอดรวม 9 รายการ 935.00"
+ },
+ "mix-oYBQAniCJr3E9lFtZsIAN1EQpLgf6NeWAClEcD~tplv-sdweummd6v-text-logo-v1_QG1pZnRhaDY2MDE=_q75": {
+  "amount": 5918.0,
+  "note": "Kasemrad hospital; 5,918.00 settled by bank transfer, itemised above with a 0.00 discount"
+ }
 }

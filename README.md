@@ -54,11 +54,12 @@ API is off, the quota is gone or the network is down, the preview shows a note i
 and you type the fields. Receipt reading is never load-bearing.
 
 **Measured, not assumed.** `tests/fixtures/receipts/` holds Vision's real output for the
-18 images in `sample/`, with the true total for each read off the image by eye in
-`expected.json`. The parser currently gets **16 of 16** samples right where a total is
-present and legible; one handwritten delivery order is marked known-hard because Vision
-splits its figure into `Total 2,7 10` before the parser sees it. Run
-`python -m unittest discover -s tests` and the scoreboard prints.
+24 images in `sample/`, with the true total for each read off the image by eye in
+`expected.json`. The parser gets **20 of 20** right where a total is present and legible
+— 7-Eleven, Tops, Central, two hospitals, a vet, a school and two invoice templates. Two
+are marked known-hard and do not fail the build, both because Vision loses the figure or
+its label before any rule could help. Run `python -m unittest discover -s tests` and the
+scoreboard prints.
 
 ## How it fits together
 

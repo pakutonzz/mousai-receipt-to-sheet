@@ -27,11 +27,18 @@ MONEY = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?")
 # Most specific first: a receipt often has several of these and the later,
 # more general ones ("รวม") also match subtotals.
 TOTAL_KEYWORDS = (
+    # Most specific first. A receipt often carries several of these and the
+    # later, more general ones also match subtotals and column headers.
     "รวมทั้งสิ้น",
     "ยอดสุทธิ",
     "รวมสุทธิ",
     "ยอดชำระ",
+    "ชำระโดย",
     "จำนวนเงินรวม",
+    # "price including VAT" is the grand total, not the tax line. It has to
+    # outrank the plain "รวม" that also sits on the goods subtotal above it.
+    "รวมภาษีมูลค่าเพิ่ม",
+    "ราคารวมภาษี",
     "grand total",
     "net total",
     "amount due",
@@ -41,6 +48,18 @@ TOTAL_KEYWORDS = (
     "สุทธิ",
     "รวม",
 )
+
+# Thai has no spaces, but Vision returns it word-segmented, so a line arrives as
+# "จำนวน เงิน รวม ทั้งสิ้น". Matching ignores spaces on both sides, otherwise
+# every multi-word keyword above silently never fires and the ranking is lost.
+def compact(text: str) -> str:
+    return text.replace(" ", "")
+
+
+# VAT is only "not the total" when it stands alone. "ราคารวมภาษีมูลค่าเพิ่ม" is
+# the grand total; "ภาษีมูลค่าเพิ่ม (7%) 91.00" is the tax on its own.
+VAT_MARKERS = ("vat", "ภาษี")
+INCLUSIVE = ("รวม", "total", "สุทธิ")
 
 # Lines that carry a number which is emphatically not the total.
 NOT_TOTAL = (
@@ -52,8 +71,6 @@ NOT_TOTAL = (
     "change",
     "cash",
     "tender",
-    "vat",
-    "ภาษี",
     "ส่วนลด",
     "discount",
     "point",
@@ -193,11 +210,12 @@ def _scan(lines: list[str], matches, label: str) -> tuple[float | None, str]:
     petty-cash ledger wants.
     """
     for keyword in TOTAL_KEYWORDS:
+        wanted = compact(keyword)
         for index, line in enumerate(lines):
-            lowered = line.lower()
-            if any(bad in lowered for bad in NOT_TOTAL):
+            compacted = compact(line.lower())
+            if _excluded(compacted):
                 continue
-            if not matches(lowered, keyword):
+            if not matches(compacted, wanted):
                 continue
             amounts = _money_on(line)
             if amounts:
@@ -213,14 +231,22 @@ def _scan(lines: list[str], matches, label: str) -> tuple[float | None, str]:
     return None, ""
 
 
+def _excluded(compacted: str) -> bool:
+    """Is this line carrying a number that is definitely not the total?"""
+    if any(bad in compacted for bad in (compact(b) for b in NOT_TOTAL)):
+        return True
+    if any(vat in compacted for vat in VAT_MARKERS):
+        return not any(good in compacted for good in INCLUSIVE)
+    return False
+
+
 CHANGE_MARKERS = ("เงินทอน", "ทอน", "change")
 
 
 def _from_change(lines: list[str]) -> tuple[float | None, str]:
     """Recover the total from a cash-and-change line: paid = tendered - change."""
     for line in lines:
-        lowered = line.lower()
-        if not any(marker in lowered for marker in CHANGE_MARKERS):
+        if not any(marker in compact(line.lower()) for marker in CHANGE_MARKERS):
             continue
         amounts = _money_on(line)
         if len(amounts) != 2:
@@ -260,7 +286,7 @@ def amount_from_lines(lines: list[str]) -> tuple[float | None, str]:
     candidates = [
         amount
         for line in lines
-        if not any(bad in line.lower() for bad in NOT_TOTAL)
+        if not _excluded(compact(line.lower()))
         for amount in _money_on(line)
         # Long digit runs are ids and phone numbers, not money.
         if 0 < amount < 1_000_000 and not re.search(r"\d{7,}", line)

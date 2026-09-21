@@ -29,7 +29,7 @@ EXPECTED = FIXTURES / "expected.json"
 
 # Every sample with a known total and no recorded excuse must pass. Raise this by
 # fixing the parser, never by lowering it.
-REQUIRED = 16
+REQUIRED = 20
 
 
 def load() -> list[tuple[str, dict, dict]]:
