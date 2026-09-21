@@ -49,7 +49,7 @@ def main() -> int:
         print(f"  on a phone        http://{lan_address()}:{args.port}")
     print(f"  receipt reading   {reader.name}")
     if reader.name == "none":
-        print("                    (set ANTHROPIC_API_KEY in .env to switch it on)")
+        print("                    (enable the Cloud Vision API to switch it on)")
     print()
 
     uvicorn.run(

@@ -43,11 +43,14 @@ python scripts/reconcile.py <spreadsheet-id>
 Optional. The app is fully usable by typing, and it never writes anything OCR
 produced without a person confirming it.
 
-| Backend | Switched on by | Notes |
-| --- | --- | --- |
-| Claude | `ANTHROPIC_API_KEY` in `.env` | Reads the image directly. Best on Thai receipts. |
-| Google Cloud Vision | `MOUSAI_ENABLE_VISION=true` | Reuses the service account; needs the Vision API enabled. |
-| none | the default | Type the fields in. |
+Google Cloud Vision extracts the text, then `src/mousai/receipt.py` decides what the
+numbers mean — ranked Thai and English total keywords, cash/change/VAT excluded, and
+lines rebuilt from word bounding boxes so a label pairs with the amount in the far-right
+column. It uses the service account that is already set up for Sheets.
+
+It switches on by itself once the Vision API is enabled on the project; there is no
+flag. If the API is off, the quota is gone or the network is down, the preview shows a
+note in Thai and you type the fields. Receipt reading is never load-bearing.
 
 ## How it fits together
 
@@ -57,7 +60,7 @@ produced without a person confirming it.
 | `src/mousai/templates.py` | Which column is which, per Fund. |
 | `src/mousai/sheets.py` | The only code that talks to Google. |
 | `src/mousai/receipt.py` | Amount, date and description out of receipt text. Pure. |
-| `src/mousai/ocr.py` | The backends above. Any failure degrades to typing. |
+| `src/mousai/ocr.py` | Google Cloud Vision. Any failure degrades to typing. |
 | `src/mousai/messages.py` | Thai for the UI, English for the terminal. The domain emits codes. |
 | `src/mousai/web.py` | Three screens: capture, check, confirm. |
 
@@ -99,6 +102,7 @@ python scripts/extract_baseline.py "เบิกจ่ายเงินสด �
 | `reconcile.py` | Diff the live Workbook against that snapshot. Exits non-zero on drift. |
 | `format_dates.py` | One-off: set the date columns to `dd/mm/yyyy`. |
 | `add_entry.py` | Record an Entry from the terminal. |
+| `capture_receipts.py` | One-off: snapshot Vision's output for `sample/` as test fixtures. |
 | `serve.py` | Run the web UI. |
 
 ## Not built, deliberately

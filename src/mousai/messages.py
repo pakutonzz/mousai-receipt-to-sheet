@@ -44,6 +44,10 @@ TH = {
     "no_pages": "ไฟล์ {workbook} ไม่มีหน้าที่เขียนได้",
     "image_too_large": "ไฟล์รูปใหญ่เกิน {limit}MB",
     "not_an_image": "อ่านไฟล์ {kind} ไม่ได้ กรุณาใช้รูปภาพ",
+    "ocr_absent": "ยังไม่ได้เปิดระบบอ่านใบเสร็จ กรุณากรอกข้อมูลเอง",
+    "ocr_unavailable": "อ่านใบเสร็จอัตโนมัติไม่ได้ในขณะนี้ กรุณากรอกข้อมูลเอง",
+    "ocr_no_text": "ไม่พบข้อความในรูปนี้ กรุณาถ่ายใหม่ให้ชัดขึ้น หรือกรอกเอง",
+    "ocr_read_by_google": "อ่านด้วย Google Cloud Vision กรุณาตรวจสอบทุกช่อง",
 }
 
 EN = {
@@ -68,6 +72,10 @@ EN = {
     "no_pages": "{workbook} has no writable Pages",
     "image_too_large": "that image is larger than {limit}MB",
     "not_an_image": "cannot read {kind}; please use an image",
+    "ocr_absent": "no OCR configured, so fill the fields in by hand",
+    "ocr_unavailable": "receipt reading is unavailable right now; fill in by hand",
+    "ocr_no_text": "no text found in that image; retake it or type the fields",
+    "ocr_read_by_google": "read by Google Cloud Vision; check every field",
 }
 
 

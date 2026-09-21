@@ -78,10 +78,13 @@ confirming it.
 Top-ups and the Ledger sheets, creating Pages, writing a certificate alongside
 an Entry, and any automatic update of the summary sheets.
 
-OCR was out of scope until the write path was proven; it is now built. Claude
-reads the image when `ANTHROPIC_API_KEY` is set, Google Cloud Vision otherwise,
-and neither is required — every backend failure degrades to typing, and nothing
-OCR produces is written without a person confirming it.
+OCR was out of scope until the write path was proven; it is now built on Google
+Cloud Vision, using the same service account as Sheets. Vision extracts the
+text and `receipt.py` picks the amount by ranked keywords, pairing labels to
+right-column amounts using word bounding boxes. It is never required: a disabled
+API, an exhausted quota, a dead network or an unreadable photo all degrade to a
+Thai note and manual typing, and nothing OCR produces is written without a
+person confirming it.
 
 ## Getting to production
 
