@@ -23,9 +23,9 @@ from fastapi.templating import Jinja2Templates
 
 from . import ocr
 from .messages import Notice, thai
-from .page import PageError
+from .page import Formula, PageError
 from .receipt import Reading
-from .sheets import Sheets, SheetsError
+from .sheets import Sheets, SheetsError, split_ref
 from .templates import BY_FUND, fund_for_page
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "views"))
@@ -65,6 +65,36 @@ def _requester(choice: str, typed: str) -> str:
     if choice == OTHER:
         return typed.strip() or "-"
     return choice.strip() or "-"
+
+
+def cells_for_display(placement, template) -> list[dict]:
+    """The cells to be written, as a person will see them in the sheet.
+
+    Three of them are stored in a machine form that means nothing to a reader:
+    the date is a serial, the balance is a formula, and money carries whatever
+    precision float arithmetic left behind. The preview exists to tell someone
+    what will be true after they press the button, and "=F28-E29" does not tell
+    them the balance. What gets written is unchanged: the balance is still a live
+    formula, per ADR 0002.
+    """
+    date_ref = f"{template.date}{placement.row}"
+    money = {
+        f"{template.disbursed}{placement.row}",
+        f"{template.received}{placement.row}",
+    }
+    shown = []
+    for ref in sorted(placement.cells, key=split_ref):
+        value = placement.cells[ref]
+        if ref == date_ref:
+            text = f"{placement.date:%d/%m/%Y}"
+        elif isinstance(value, Formula):
+            text = f"{placement.balance:,.2f}"
+        elif ref in money and isinstance(value, (int, float)):
+            text = f"{value:,.2f}"
+        else:
+            text = str(value)
+        shown.append({"ref": ref, "value": text})
+    return shown
 
 
 def group_pages(pages, remembered: dict[str, str]) -> list[dict]:
@@ -229,6 +259,7 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
                 "requesters": requesters,
                 "other": OTHER,
                 "placement": placement,
+                "cells": cells_for_display(placement, template),
                 "warnings": [thai(w) for w in placement.warnings],
                 "previous": live.last_entry,
                 "entry_date": chosen_date.isoformat(),

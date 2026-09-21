@@ -325,3 +325,43 @@ class Confirm(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CellPreview(unittest.TestCase):
+    """The 'cells to be written' table is for a human, not for a machine."""
+
+    def test_the_balance_shows_the_number_not_the_formula(self):
+        client, _, _ = build()
+        body = client.post("/preview", data=fields()).text
+        self.assertIn("<td>G21</td><td>-2.75</td>", body.replace("\n", ""))
+        self.assertNotIn("=G20-F21", body)
+
+    def test_the_date_shows_as_a_date_not_a_serial(self):
+        client, _, _ = build()
+        body = client.post("/preview", data=fields()).text
+        self.assertIn("03/08/2026", body)
+        self.assertNotIn("46237", body)
+
+    def test_money_shows_two_decimals(self):
+        client, _, _ = build()
+        body = client.post("/preview", data=fields(amount="2061")).text.replace("\n", "")
+        self.assertIn("<td>F21</td><td>2,061.00</td>", body)
+
+    def test_a_formula_is_still_what_gets_written(self):
+        """Display only: ADR 0002 says the balance must stay a live formula."""
+        client, service, _ = build()
+        client.post("/confirm", data=fields())
+        writes = [b for b in service.batches if any("updateCells" in r for r in b["requests"])]
+        values = [
+            r["updateCells"]["rows"][0]["values"][0]["userEnteredValue"]
+            for r in writes[0]["requests"]
+        ]
+        self.assertIn({"formulaValue": "=G20-F21"}, values)
+
+    def test_the_emergency_layout_humanises_its_own_columns(self):
+        client, _, _ = build()
+        body = client.post(
+            "/preview", data=fields(page=EMERGENCY_PAGE, amount="780")
+        ).text.replace("\n", "")
+        self.assertIn("<td>F29</td><td>823.25</td>", body)
+        self.assertIn("<td>A29</td><td>03/08/2026</td>", body)

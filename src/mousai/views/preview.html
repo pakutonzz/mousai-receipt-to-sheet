@@ -69,10 +69,13 @@
   <div class="card">
     <div class="sub">เซลล์ที่จะเขียน</div>
     <table class="rows mono">
-      {% for ref, value in placement.cells.items()|sort %}
-      <tr><td>{{ ref }}</td><td>{{ value }}</td></tr>
+      {% for c in cells %}
+      <tr><td>{{ c.ref }}</td><td>{{ c.value }}</td></tr>
       {% endfor %}
     </table>
+    <div class="sub" style="margin-top:8px">
+      ช่องคงเหลือเขียนเป็นสูตรต่อจากแถวบน ตัวเลขข้างบนคือผลลัพธ์
+    </div>
   </div>
 
   <label style="display:flex;gap:8px;align-items:center;margin:0">
