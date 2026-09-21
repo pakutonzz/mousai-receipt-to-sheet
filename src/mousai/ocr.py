@@ -22,7 +22,7 @@ from .messages import Notice
 from .receipt import Reading, Word
 from .receipt import read as read_text
 from .receipt import read_layout
-from .sheets import load_env
+from .sheets import beside_the_code, load_env
 
 VISION_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 
@@ -89,7 +89,8 @@ class GoogleVisionReader:
 
         env = env if env is not None else load_env()
         credentials = service_account.Credentials.from_service_account_file(
-            env.get("GOOGLE_APPLICATION_CREDENTIALS"), scopes=VISION_SCOPES
+            str(beside_the_code(env.get("GOOGLE_APPLICATION_CREDENTIALS", ""))),
+            scopes=VISION_SCOPES,
         )
         return cls(build("vision", "v1", credentials=credentials, cache_discovery=False))
 
@@ -146,7 +147,7 @@ def detect(env: dict[str, str] | None = None) -> ReceiptReader:
     """
     env = env if env is not None else load_env()
     key = env.get("GOOGLE_APPLICATION_CREDENTIALS")
-    if key and Path(key).is_file():
+    if key and beside_the_code(key).is_file():
         try:
             return GoogleVisionReader.from_env(env)
         except Exception:  # noqa: BLE001 - fall back to typing

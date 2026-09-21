@@ -22,6 +22,7 @@ from mousai import PETTY_CASH, Formula, Page  # noqa: E402
 from mousai import EMERGENCY  # noqa: E402
 from mousai.sheets import (  # noqa: E402
     CONFIG_SHEET,
+    beside_the_code,
     Sheets,
     WorkbookRef,
     RowTaken,
@@ -331,3 +332,26 @@ class Requesters(unittest.TestCase):
     def test_a_workbook_with_no_pages_yields_no_names(self):
         service = FakeService({}, {"แจกแจง": 1})
         self.assertEqual(Workbook(service, "fake-id").requesters(), [])
+
+
+class ConfigPaths(unittest.TestCase):
+    """Config must be found from wherever the server was launched.
+
+    `.env` and the key are written as relative paths by the setup wizard. When
+    they were resolved against the working directory, starting the server from
+    anywhere but the repo root found neither, and receipt reading fell back to
+    "type it in" with nothing on screen to say why.
+    """
+
+    def test_a_relative_path_resolves_against_the_repo_not_the_cwd(self):
+        found = beside_the_code(".env")
+        self.assertTrue(found.is_absolute())
+        self.assertEqual(found.parent.name, ROOT.name)
+
+    def test_the_key_path_the_wizard_writes_resolves(self):
+        found = beside_the_code("secrets/service-account.json")
+        self.assertEqual(found, ROOT / "secrets" / "service-account.json")
+
+    def test_an_absolute_path_is_left_alone(self):
+        absolute = Path(ROOT / "somewhere" / "key.json")
+        self.assertEqual(beside_the_code(absolute), absolute)

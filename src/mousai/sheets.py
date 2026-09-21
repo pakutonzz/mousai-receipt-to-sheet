@@ -112,9 +112,26 @@ def quote(sheet_name: str) -> str:
     return "'" + sheet_name.replace("'", "''") + "'"
 
 
+# src/mousai/sheets.py -> the repo root. Config lives with the code, not with
+# whatever directory someone happened to launch from.
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def beside_the_code(path: str | Path) -> Path:
+    """Resolve a configured path against the repo root unless it is absolute.
+
+    `.env` and the service-account key are written as relative paths by the
+    setup wizard. Resolving them against the working directory meant that
+    starting the server from anywhere else found neither, and receipt reading
+    silently fell back to "type it in" with no hint as to why.
+    """
+    found = Path(path)
+    return found if found.is_absolute() else ROOT / found
+
+
 def load_env(path: str = ".env") -> dict[str, str]:
     env: dict[str, str] = {}
-    file = Path(path)
+    file = beside_the_code(path)
     if not file.is_file():
         return env
     for line in file.read_text(encoding="utf-8").splitlines():
@@ -154,10 +171,10 @@ class Sheets:
 
         env = load_env(path)
         key = env.get("GOOGLE_APPLICATION_CREDENTIALS")
-        if not key or not Path(key).is_file():
+        if not key or not beside_the_code(key).is_file():
             raise SheetsError(Notice("no_credentials"))
         credentials = service_account.Credentials.from_service_account_file(
-            key, scopes=SCOPES
+            str(beside_the_code(key)), scopes=SCOPES
         )
         scratch = env.get("MOUSAI_TEST_SPREADSHEET_ID")
         return cls(
