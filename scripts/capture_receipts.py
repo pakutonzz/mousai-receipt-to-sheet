@@ -22,6 +22,7 @@ import argparse
 import base64
 import json
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -100,10 +101,19 @@ def main(argv: list[str] | None = None) -> int:
     written = 0
     for path in found:
         name = "-".join(path.relative_to(SAMPLES).with_suffix("").parts)
-        try:
-            data = capture(reader._service, path, args.feature)
-        except Exception as error:  # noqa: BLE001
-            print(f"  {name}: FAILED {str(error)[:120]}")
+        data = None
+        for attempt in range(3):
+            try:
+                data = capture(reader._service, path, args.feature)
+                break
+            except Exception as error:  # noqa: BLE001
+                # Right after billing is switched on, some requests land on
+                # nodes that have not caught up and 403 for a minute or two.
+                if attempt == 2:
+                    print(f"  {name}: FAILED {str(error)[:120]}")
+                else:
+                    time.sleep(3)
+        if data is None:
             continue
         (FIXTURES / f"{name}.json").write_text(
             json.dumps(data, ensure_ascii=False, indent=1), encoding="utf-8"

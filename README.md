@@ -48,9 +48,17 @@ numbers mean — ranked Thai and English total keywords, cash/change/VAT exclude
 lines rebuilt from word bounding boxes so a label pairs with the amount in the far-right
 column. It uses the service account that is already set up for Sheets.
 
-It switches on by itself once the Vision API is enabled on the project; there is no
-flag. If the API is off, the quota is gone or the network is down, the preview shows a
-note in Thai and you type the fields. Receipt reading is never load-bearing.
+It switches on by itself once the Vision API is enabled on the project (which needs
+billing attached, even inside the free 1,000 images a month); there is no flag. If the
+API is off, the quota is gone or the network is down, the preview shows a note in Thai
+and you type the fields. Receipt reading is never load-bearing.
+
+**Measured, not assumed.** `tests/fixtures/receipts/` holds Vision's real output for the
+18 images in `sample/`, with the true total for each read off the image by eye in
+`expected.json`. The parser currently gets **16 of 16** samples right where a total is
+present and legible; one handwritten delivery order is marked known-hard because Vision
+splits its figure into `Total 2,7 10` before the parser sees it. Run
+`python -m unittest discover -s tests` and the scoreboard prints.
 
 ## How it fits together
 

@@ -58,6 +58,17 @@ NOT_TOTAL = (
     "discount",
     "point",
     "แต้ม",
+    # "Sub Total" contains "total", so without this a 7-Eleven slip returns the
+    # figure before discounts — 76.00 where the customer paid 69.00.
+    "sub total",
+    "subtotal",
+    "ยอดก่อน",
+    # A deposit or an outstanding balance on a pre-order slip is not the price.
+    "ค้าง",
+    "มัดจำ",
+    "มัดจา",
+    "deposit",
+    "balance",
 )
 
 THAI_MONTHS = {
@@ -154,8 +165,14 @@ def _fuzzy_contains(line: str, keyword: str) -> bool:
     return False
 
 
+# Vision reads a decimal point as a comma often enough to matter: a real sample
+# has "300,00" for 300.00. A comma before exactly two digits is a decimal — a
+# thousands separator is always followed by three.
+DECIMAL_COMMA = re.compile(r",(\d{2})(?!\d)")
+
+
 def normalise(text: str) -> str:
-    return text.translate(THAI_DIGITS).replace(" ", " ")
+    return DECIMAL_COMMA.sub(r".\1", text.translate(THAI_DIGITS).replace(" ", " "))
 
 
 def _money_on(line: str) -> list[float]:
@@ -184,12 +201,33 @@ def _scan(lines: list[str], matches, label: str) -> tuple[float | None, str]:
                 continue
             amounts = _money_on(line)
             if amounts:
-                return amounts[-1], f"from the {keyword!r} line{label}"
-            # Some layouts put the figure on the following line.
+                return max(amounts), f"from the {keyword!r} line{label}"
+            # Some layouts put the figure on the following line. Only trust that
+            # when the next line is a lone amount: a column header like
+            # "ลำดับ รายการสินค้า ราคา/หน่วย ราคารวม" also carries a total keyword
+            # and no number, and the row under it is a line item, not the total.
             if index + 1 < len(lines):
                 amounts = _money_on(lines[index + 1])
-                if amounts:
-                    return amounts[-1], f"from the line after {keyword!r}{label}"
+                if len(amounts) == 1:
+                    return amounts[0], f"from the line after {keyword!r}{label}"
+    return None, ""
+
+
+CHANGE_MARKERS = ("เงินทอน", "ทอน", "change")
+
+
+def _from_change(lines: list[str]) -> tuple[float | None, str]:
+    """Recover the total from a cash-and-change line: paid = tendered - change."""
+    for line in lines:
+        lowered = line.lower()
+        if not any(marker in lowered for marker in CHANGE_MARKERS):
+            continue
+        amounts = _money_on(line)
+        if len(amounts) != 2:
+            continue
+        tendered, change = max(amounts), min(amounts)
+        if tendered > change:
+            return round(tendered - change, 2), "tendered minus change"
     return None, ""
 
 
@@ -207,6 +245,15 @@ def amount_from_lines(lines: list[str]) -> tuple[float | None, str]:
 
     # Nothing matched cleanly, so allow for OCR having mangled the keyword.
     amount, why = _scan(lines, _fuzzy_contains, ", read loosely")
+    if amount is not None:
+        return amount, why
+
+    # Still nothing, so work it out from the money instead of the words. A
+    # 7-Eleven slip prints "เงินสด/เงินทอน 300.00 1.00" on one line, and what was
+    # paid is the difference. This rescues blurred receipts whose total label is
+    # unreadable, and is far safer than guessing at the largest number — on one
+    # real sample that guess returned the shop's branch number.
+    amount, why = _from_change(lines)
     if amount is not None:
         return amount, why
 
