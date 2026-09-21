@@ -14,6 +14,7 @@ quietly deleted.
 
 from __future__ import annotations
 
+import datetime as dt
 import json
 import sys
 import unittest
@@ -27,9 +28,10 @@ from mousai.receipt import Word, read_layout  # noqa: E402
 FIXTURES = ROOT / "tests" / "fixtures" / "receipts"
 EXPECTED = FIXTURES / "expected.json"
 
-# Every sample with a known total and no recorded excuse must pass. Raise this by
-# fixing the parser, never by lowering it.
+# Every sample with a known value and no recorded excuse must pass. Raise these
+# by fixing the parser, never by lowering them.
 REQUIRED = 22
+REQUIRED_DATES = 20
 
 
 def load() -> list[tuple[str, dict, dict]]:
@@ -49,6 +51,16 @@ def load() -> list[tuple[str, dict, dict]]:
 def amount_for(fixture: dict) -> float | None:
     words = [Word(**w) for w in fixture["words"]]
     return read_layout(words, text=fixture["text"]).amount
+
+
+def date_for(fixture: dict, today: dt.date | None) -> dt.date | None:
+    """Read the date as if the receipt were photographed the day it was issued.
+
+    Otherwise the ±730-day sanity window rejects every sample — they are all
+    from 2012 to 2026 — and would hide whether the parser works at all.
+    """
+    words = [Word(**w) for w in fixture["words"]]
+    return read_layout(words, text=fixture["text"], today=today).date
 
 
 class SampleReceipts(unittest.TestCase):
@@ -72,26 +84,60 @@ class SampleReceipts(unittest.TestCase):
                 self.assertEqual(got, expectation["amount"], expectation.get("note", ""))
         self.assertEqual(misses, [])
 
+    def test_every_known_date_is_read_correctly(self):
+        for name, fixture, expectation in self.samples:
+            if expectation.get("hard_date") or not expectation.get("date"):
+                continue
+            want = dt.date.fromisoformat(expectation["date"])
+            with self.subTest(sample=name):
+                self.assertEqual(date_for(fixture, want), want)
+
+    def test_the_required_number_of_dates_is_still_covered(self):
+        scoreable = [
+            name
+            for name, _, e in self.samples
+            if "hard_date" not in e and e.get("date")
+        ]
+        self.assertGreaterEqual(len(scoreable), REQUIRED_DATES, scoreable)
+
     def test_the_required_number_of_samples_is_still_covered(self):
         """Guards against a fixture or an expectation quietly disappearing."""
         scoreable = [name for name, _, e in self.samples if not e.get("hard")]
         self.assertGreaterEqual(len(scoreable), REQUIRED, scoreable)
 
     def test_report(self):
-        """Not an assertion: prints the scoreboard so the number is visible."""
-        lines, right, scoreable = [], 0, 0
+        """Not an assertion: prints the scoreboard so the numbers are visible."""
+        lines = []
+        right = scoreable = dates_right = dates_scoreable = 0
         for name, fixture, expectation in sorted(self.samples):
             got = amount_for(fixture)
             want = expectation.get("amount")
             if expectation.get("hard"):
-                mark = "known-hard"
+                mark = "hard"
             else:
                 scoreable += 1
                 ok = got == want
                 right += ok
-                mark = ("ok" if want is not None else "ok (blank)") if ok else "MISS"
-            lines.append(f"    {mark:>18}  {name:<38} want={want!r:<10} got={got!r}")
-        print(f"\n\n  receipt samples: {right}/{scoreable} correct\n")
+                mark = ("ok" if want is not None else "blank") if ok else "MISS"
+
+            wanted_date = expectation.get("date")
+            if expectation.get("hard_date") or not wanted_date:
+                date_mark, got_date = "hard", "-"
+            else:
+                as_date = dt.date.fromisoformat(wanted_date)
+                got_date = date_for(fixture, as_date)
+                dates_scoreable += 1
+                hit = got_date == as_date
+                dates_right += hit
+                date_mark = "ok" if hit else "MISS"
+
+            lines.append(
+                f"    {mark:>5} {want!r:<10} | {date_mark:>5} {str(got_date):<12} {name}"
+            )
+        print(
+            f"\n\n  receipt samples: {right}/{scoreable} amounts, "
+            f"{dates_right}/{dates_scoreable} dates\n"
+        )
         print("\n".join(lines))
         print()
 

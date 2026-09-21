@@ -98,9 +98,20 @@ THAI_MONTHS = {
 }
 
 DATE_PATTERNS = (
-    re.compile(r"(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{2,4})"),
-    re.compile(r"(\d{4})-(\d{2})-(\d{2})"),
+    # ISO first, and anchored. Otherwise the day-first pattern below matches
+    # "23-01-07" *inside* "2023-01-07" and reads it as 23 January 2007.
+    re.compile(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)"),
+    # Day first, the Thai norm. Two- or four-digit year.
+    re.compile(r"(?<!\d)(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?!\d)"),
+    # Dots demand a four-digit year. Hospital bills itemise by code — "1.1.12",
+    # "1.1.14" — and those parse as perfectly plausible dates otherwise.
+    re.compile(r"(?<!\d)(\d{1,2})\.(\d{1,2})\.(\d{4})(?!\d)"),
 )
+
+# A date sitting right after one of these is the document's own date. Receipts
+# carry others — points expiry, a promotion end, a printed-at stamp — so when a
+# labelled one exists it wins over whichever happens to appear first.
+DATE_LABELS = ("วันที่", "วันที", "ว/ด/ป", "date")
 
 
 @dataclass
@@ -324,10 +335,36 @@ def parse_date(
     body = normalise(text)
     today = today or dt.date.today()
 
+    # A labelled date is the document's own. Look there first, so a points
+    # expiry or a promotion end date cannot win just by being printed higher up.
+    for window in _after_labels(body):
+        found, why = _first_date_in(window, today)
+        if found is not None:
+            return found, why
+
+    return _first_date_in(body, today)
+
+
+def _after_labels(body: str) -> list[str]:
+    """The stretch of text just after each date label, in document order."""
+    lowered = body.lower()
+    windows = []
+    for label in DATE_LABELS:
+        start = 0
+        while True:
+            at = lowered.find(label, start)
+            if at < 0:
+                break
+            windows.append(body[at : at + 40])
+            start = at + 1
+    return windows
+
+
+def _first_date_in(body: str, today: dt.date) -> tuple[dt.date | None, Notice]:
     for pattern in DATE_PATTERNS:
         for match in pattern.finditer(body):
             groups = [int(g) for g in match.groups()]
-            if len(str(match.group(1))) == 4:
+            if len(match.group(1)) == 4:
                 year, month, day = groups
             else:
                 day, month, year = groups
@@ -343,15 +380,20 @@ def parse_date(
             return found, Notice("date_read", {"text": match.group()})
 
     for name, month in THAI_MONTHS.items():
-        match = re.search(rf"(\d{{1,2}})\s*{re.escape(name)}\.?\s*(\d{{2,4}})", body)
+        # The stem is an abbreviation; allow the rest of a spelled-out month so
+        # that "13 กรกฎาคม 2559" matches on the "กรกฎา" stem.
+        match = re.search(
+            rf"(\d{{1,2}})\s*{re.escape(name)}[฀-๿]*\.?\s*(\d{{2,4}})", body
+        )
         if match:
             day, year = int(match.group(1)), _year(int(match.group(2)))
             try:
-                return dt.date(year, month, day), Notice(
-                    "date_read", {"text": match.group()}
-                )
+                found = dt.date(year, month, day)
             except ValueError:
                 continue
+            if abs((found - today).days) > 730:
+                continue
+            return found, Notice("date_read", {"text": match.group()})
 
     return None, Notice("date_not_found")
 
