@@ -102,6 +102,10 @@ the archived `.xlsx`:
 python scripts/extract_baseline.py "เบิกจ่ายเงินสด สิงหาคม26.xlsx"
 ```
 
+The receipt fixtures, by contrast, **are** committed, along with the `sample/` images
+they came from — public sample receipts, nothing from the clinic. Re-capture them with
+`python scripts/capture_receipts.py` if Vision's output ever changes.
+
 ## Scripts
 
 | | |
