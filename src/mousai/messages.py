@@ -58,7 +58,8 @@ TH = {
     "date_not_found": "วันที่: หาไม่พบ ใช้วันที่วันนี้",
     "shop_seen": "ร้าน: {shop}",
     "shop_not_found": "ร้าน: หาไม่พบ",
-    "amount_needed": "อ่านยอดเงินจากรูปไม่ได้ กรุณากรอกยอดเงินเอง แล้วกดตรวจสอบอีกครั้ง",
+    "amount_to_preview": "กรอกจำนวนเงิน แล้วกดตรวจสอบก่อนบันทึก",
+    "preview_stale": "ข้อมูลในหน้า {page} เปลี่ยนไประหว่างที่ตรวจสอบ (อาจมีคนบันทึกพร้อมกัน) ยังไม่ได้บันทึก กรุณาตรวจสอบเซลล์อีกครั้ง",
 }
 
 EN = {
@@ -97,7 +98,8 @@ EN = {
     "date_not_found": "date: not found; using today",
     "shop_seen": "shop: {shop}",
     "shop_not_found": "shop: not found",
-    "amount_needed": "could not read the amount; type it in and check again",
+    "amount_to_preview": "type an amount, then review before saving",
+    "preview_stale": "{page} changed while it was being checked (someone else may have written to it); nothing was written, check the cells again",
 }
 
 

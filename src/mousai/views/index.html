@@ -1,17 +1,28 @@
 {% extends "base.html" %}
 {% block body %}
-{% if message %}<div class="warn">{{ message }}</div>{% endif %}
-<form method="post" action="/preview" enctype="multipart/form-data">
+{% if saved %}
+<div class="ok" id="saved" style="margin-bottom:14px">
+  บันทึกแล้ว: <strong>{{ saved.page }}</strong> แถว <strong>{{ saved.row }}</strong>
+  · <a href="https://docs.google.com/spreadsheets/d/{{ workbook_id }}/edit" target="_blank"
+       rel="noopener">เปิดไฟล์ใน Google Sheets</a>
+</div>
+{% endif %}
+{% if message %}<div class="warn" id="message" style="margin:0 0 14px">{{ message }}</div>{% endif %}
+
+<form id="entry" method="post" action="/confirm">
   <div class="card">
     <label for="receipt">ถ่ายรูป หรือเลือกไฟล์ใบเสร็จ</label>
-    <input type="file" id="receipt" name="receipt" accept="image/*" capture="environment">
-    <div class="sub" style="margin-top:8px">
+    {# No name attribute: the photo goes to /api/read on its own and is never posted with Confirm. #}
+    <input type="file" id="receipt" accept="image/*" capture="environment">
+    <div class="sub" id="ocr-status" style="margin-top:8px">
       {% if ocr_name == "none" %}
         ยังไม่ได้เปิดระบบอ่านใบเสร็จ กรอกข้อมูลเองด้านล่างได้เลย
       {% else %}
-        ระบบจะอ่านยอดเงินให้ แล้วให้ตรวจสอบก่อนบันทึกเสมอ
+        ระบบจะอ่านยอดเงินและวันที่ให้ แล้วให้ตรวจสอบก่อนบันทึกเสมอ
       {% endif %}
     </div>
+    <img id="receipt-thumb" class="thumb" alt="รูปใบเสร็จ" hidden>
+    <ul id="reading-notes" class="notes" hidden></ul>
   </div>
 
   <div class="card">
@@ -32,11 +43,17 @@
       </optgroup>
       {% endfor %}
     </select>
-
     <div class="sub">● คือหน้าที่ใช้อยู่ล่าสุด เลือกหน้าอื่นได้ตามต้องการ</div>
 
     <label for="entry_date">วันที่</label>
-    <input type="date" id="entry_date" name="entry_date" value="{{ entry_date or today }}">
+    <input type="date" id="entry_date" name="entry_date" value="{{ entry_date or '' }}">
+    <div class="sub">
+      {% if ocr_name == "none" %}
+        เว้นว่างไว้ = วันนี้
+      {% else %}
+        เว้นว่างไว้ ระบบจะใช้วันที่บนใบเสร็จ ถ้าอ่านไม่ได้จะใช้วันนี้
+      {% endif %}
+    </div>
 
     <label for="description">รายละเอียด</label>
     <input type="text" id="description" name="description" value="{{ description or '' }}"
@@ -61,35 +78,266 @@
     <input type="text" id="note" name="note" value="{{ note or '' }}" placeholder="ไม่บังคับ">
   </div>
 
-  <button type="submit">ตรวจสอบก่อนบันทึก</button>
+  <div class="card">
+    <div class="sub">ตำแหน่งที่จะบันทึก</div>
+    <table class="rows">
+      <tr><td>ลงแถวที่</td><td id="p-row">–</td></tr>
+      <tr><td>ลำดับ</td><td id="p-sequence">–</td></tr>
+      <tr><td>ยอดคงเหลือเดิม</td><td id="p-previous">–</td></tr>
+      <tr><td>คงเหลือใหม่</td><td id="p-balance">–</td></tr>
+      <tr><td>เหลือที่ว่าง</td><td id="p-remaining">–</td></tr>
+    </table>
+    <div class="sub" id="same-day" style="margin-top:10px" hidden>
+      วันเดียวกับแถวบน ช่องวันที่จะเว้นว่างไว้
+    </div>
+  </div>
+
+  <input type="hidden" name="key" id="key" value="">
+  <button type="button" id="review" disabled>ตรวจสอบก่อนบันทึก</button>
+  <div class="foot" id="preview-status" style="margin-top:8px"></div>
+
+  {# The only way to write. It opens on a preview that matches the fields, and
+     while it is open the page behind it cannot be edited. #}
+  <dialog id="review-dialog" class="sheet" aria-labelledby="review-title">
+    <div class="sheet-body">
+      <h2 id="review-title">ตรวจสอบก่อนบันทึก</h2>
+      <div class="sub" id="r-where"></div>
+
+      <table class="rows">
+        <tr><td>ลงแถวที่</td><td id="r-row"></td></tr>
+        <tr><td>ลำดับ</td><td id="r-sequence"></td></tr>
+        <tr><td>ยอดคงเหลือเดิม</td><td id="r-previous"></td></tr>
+        <tr><td>คงเหลือใหม่</td><td id="r-balance"></td></tr>
+        <tr><td>เหลือที่ว่าง</td><td id="r-remaining"></td></tr>
+      </table>
+      <div class="sub" id="r-same-day" style="margin-top:10px" hidden>
+        วันเดียวกับแถวบน ช่องวันที่จะเว้นว่างไว้
+      </div>
+      <div id="r-warnings"></div>
+
+      <div class="sub" style="margin-top:14px">เซลล์ที่จะเขียน</div>
+      <table class="rows mono" id="r-cells"></table>
+      <div class="sub" style="margin-top:8px">
+        ช่องคงเหลือเขียนเป็นสูตรต่อจากแถวบน ตัวเลขข้างบนคือผลลัพธ์
+      </div>
+
+      <label style="display:flex;gap:8px;align-items:center;margin:16px 0 0">
+        <input type="checkbox" name="remember" value="1" checked style="width:auto">
+        <span>จำหน้านี้ไว้สำหรับ <span id="remember-fund"></span></span>
+      </label>
+
+      <button type="submit" id="confirm">ยืนยันบันทึก</button>
+      <button type="button" id="review-back" class="quiet" autofocus>กลับไปแก้ไข</button>
+    </div>
+  </dialog>
 </form>
+<noscript>
+  <div class="warn">หน้านี้ต้องเปิด JavaScript จึงจะแสดงเซลล์ที่จะเขียนและบันทึกได้</div>
+</noscript>
 <div class="foot">
   {{ workbooks|length }} ไฟล์ · OCR: {{ ocr_name }}
 </div>
 <script>
 (function () {
   var other = "{{ other }}";
-  function wireRequester() {
-    var pick = document.getElementById("requester");
-    var typed = document.getElementById("requester_other");
-    if (!pick || !typed) return;
-    function sync() {
-      var manual = pick.value === other;
-      typed.hidden = !manual;
-      if (manual) typed.focus();
-    }
-    pick.addEventListener("change", sync);
+  function $(id) { return document.getElementById(id); }
+
+  var form = $("entry");
+  var review = $("review");
+  var dialog = $("review-dialog");
+  var confirmButton = $("confirm");
+  var back = $("review-back");
+  var key = $("key");
+  var status = $("preview-status");
+
+  // Every edit bumps `version`. The review popup only opens when the latest
+  // preview came from the current version and no photo is still being read
+  // into the fields. The server checks the same thing independently: Confirm
+  // posts the key of the preview it saw, and a mismatch writes nothing.
+  var version = 0;
+  var shownVersion = -1;
+  var reading = 0;
+  var timer = null;
+  var latest = null;
+
+  function money(n) {
+    return Number(n).toLocaleString("en-US", {
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+  }
+
+  function sync() {
+    var ready = reading === 0 && shownVersion === version && !!key.value;
+    review.disabled = !ready;
+    if (!ready && dialog.open) dialog.close();
+  }
+
+  function changed(delay) {
+    version += 1;
+    key.value = "";
+    sync();
+    status.textContent = "กำลังคำนวณ…";
+    status.classList.remove("bad");
+    clearTimeout(timer);
+    timer = setTimeout(preview, delay == null ? 400 : delay);
+  }
+
+  function preview() {
+    var mine = version;
+    var body = new FormData(form);
+    body.delete("key");
+    body.delete("remember");
+    fetch("/api/preview", { method: "POST", body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (mine !== version) return;
+        show(data);
+        shownVersion = mine;
+        sync();
+      })
+      .catch(function () {
+        if (mine !== version) return;
+        showError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองแก้ข้อมูลอีกครั้ง หรือรีเฟรชหน้า");
+      });
+  }
+
+  function fillCells(table, cells) {
+    table.innerHTML = "";
+    cells.forEach(function (c) {
+      var tr = document.createElement("tr");
+      var ref = document.createElement("td");
+      var value = document.createElement("td");
+      ref.textContent = c.ref;
+      value.textContent = c.value;
+      tr.appendChild(ref);
+      tr.appendChild(value);
+      table.appendChild(tr);
+    });
+  }
+
+  function clearSummary() {
+    ["p-row", "p-sequence", "p-previous", "p-balance", "p-remaining"].forEach(function (id) {
+      $(id).textContent = "–";
+      $(id).className = "";
+    });
+    $("same-day").hidden = true;
+  }
+
+  function show(data) {
+    status.classList.remove("bad");
+    if (data.error) { showError(data.error); return; }
+    $("p-row").textContent = data.row;
+    $("p-sequence").textContent = data.sequence;
+    $("p-previous").textContent = money(data.previous_balance);
+    $("p-balance").textContent = data.ready ? money(data.balance) : "–";
+    $("p-balance").className = data.ready && data.balance < 0 ? "bad" : "";
+    $("p-remaining").textContent = data.rows_remaining + " แถว";
+    $("same-day").hidden = data.write_date;
+    $("remember-fund").textContent = data.fund;
+    key.value = data.ready ? data.key : "";
+    latest = data.ready ? data : null;
+    status.textContent = data.ready ? "พร้อมแล้ว กดตรวจสอบก่อนบันทึก" : data.message;
+  }
+
+  // Errors, such as a full Page, say why the button is disabled, so they sit
+  // right under it.
+  function showError(text) {
+    clearSummary();
+    key.value = "";
+    latest = null;
+    status.textContent = text;
+    status.classList.add("bad");
     sync();
   }
-  wireRequester();
 
-  var book = document.getElementById("workbook_id");
-  if (book) book.addEventListener("change", function () {
+  // -- the review popup ---------------------------------------------------
+
+  // A snapshot of the preview that is current right now. Nothing behind the
+  // popup can change while it is open, so it cannot go stale under the user.
+  function openReview() {
+    if (review.disabled || !latest) return;
+    var data = latest;
+    var book = $("workbook_id");
+    $("r-where").textContent =
+      book.options[book.selectedIndex].text + " · " + data.page + " · แถว " + data.row;
+    $("r-row").textContent = data.row;
+    $("r-sequence").textContent = data.sequence;
+    $("r-previous").textContent = money(data.previous_balance);
+    $("r-balance").textContent = money(data.balance);
+    $("r-balance").className = data.balance < 0 ? "bad" : "";
+    $("r-remaining").textContent = data.rows_remaining + " แถว";
+    $("r-same-day").hidden = data.write_date;
+    $("r-warnings").innerHTML = "";
+    data.warnings.forEach(function (text) {
+      var box = document.createElement("div");
+      box.className = "warn";
+      box.textContent = text;
+      $("r-warnings").appendChild(box);
+    });
+    fillCells($("r-cells"), data.cells);
+    $("remember-fund").textContent = data.fund;
+    confirmButton.textContent = "ยืนยันบันทึก";
+    confirmButton.disabled = false;
+    back.disabled = false;
+    dialog.showModal();
+  }
+
+  review.addEventListener("click", openReview);
+  back.addEventListener("click", function () { dialog.close(); });
+  // A tap on the dimmed backdrop lands on the dialog element itself; a tap on
+  // its contents lands on .sheet-body or deeper.
+  dialog.addEventListener("click", function (event) {
+    if (event.target === dialog) dialog.close();
+  });
+
+  // -- the fields ---------------------------------------------------------
+
+  // What the user typed always wins over the receipt, but a value that came
+  // from an earlier photo gives way to the next one.
+  function suggest(field, value) {
+    if (field.dataset.source === "user" && field.value !== "") return;
+    field.value = value;
+    field.dataset.source = value ? "ocr" : "";
+    field.classList.toggle("from-ocr", !!value);
+  }
+
+  ["entry_date", "description", "amount", "note", "requester_other"].forEach(function (id) {
+    var field = $(id);
+    if (field.value) field.dataset.source = "user";
+    function edited() {
+      field.dataset.source = field.value ? "user" : "";
+      field.classList.remove("from-ocr");
+      changed();
+    }
+    field.addEventListener("input", edited);
+    // Some mobile date pickers only fire "change".
+    if (field.type === "date") field.addEventListener("change", edited);
+    // Enter (or "Go" on a phone keyboard) must never press Confirm by itself.
+    field.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") { event.preventDefault(); field.blur(); }
+    });
+  });
+
+  $("page").addEventListener("change", function () { changed(0); });
+
+  var pick = $("requester");
+  var typed = $("requester_other");
+  function syncRequester() {
+    var manual = pick.value === other;
+    typed.hidden = !manual;
+    if (manual) typed.focus();
+  }
+  pick.addEventListener("change", function () { syncRequester(); changed(0); });
+  syncRequester();
+
+  $("workbook_id").addEventListener("change", function () {
+    var book = $("workbook_id");
+    version += 1; key.value = ""; sync();
     fetch("/api/pages?workbook_id=" + encodeURIComponent(book.value))
       .then(function (r) { return r.json(); })
       .then(function (data) {
-        if (data.error) return;
-        var page = document.getElementById("page");
+        if (data.error) { showError(data.error); return; }
+        var page = $("page");
         page.innerHTML = "";
         data.groups.forEach(function (g) {
           var group = document.createElement("optgroup");
@@ -97,27 +345,102 @@
           g.pages.forEach(function (p) {
             var option = document.createElement("option");
             option.value = p.name;
-            option.textContent = p.name + (p.remembered ? " \u25cf" : "");
+            option.textContent = p.name + (p.remembered ? " ●" : "");
             if (p.remembered) option.selected = true;
             group.appendChild(option);
           });
           page.appendChild(group);
         });
-        var pick = document.getElementById("requester");
         var current = pick.value;
         pick.innerHTML = "";
         ["-"].concat(data.requesters).forEach(function (name) {
           var option = document.createElement("option");
-          option.value = name; option.textContent = name;
+          option.value = name;
+          option.textContent = name;
           pick.appendChild(option);
         });
         var manual = document.createElement("option");
-        manual.value = other; manual.textContent = "อื่น ๆ (พิมพ์เอง)";
+        manual.value = other;
+        manual.textContent = "อื่น ๆ (พิมพ์เอง)";
         pick.appendChild(manual);
         pick.value = current || "-";
+        if (!pick.value) pick.value = "-";
+        syncRequester();
+        changed(0);
       })
-      .catch(function () {});
+      .catch(function () { showError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง"); });
   });
+
+  // -- the receipt --------------------------------------------------------
+
+  var receipt = $("receipt");
+  var thumb = $("receipt-thumb");
+  var notes = $("reading-notes");
+  var ocrStatus = $("ocr-status");
+  var reads = 0;
+
+  thumb.addEventListener("click", function () { thumb.classList.toggle("big"); });
+
+  receipt.addEventListener("change", function () {
+    var file = receipt.files && receipt.files[0];
+    if (!file) return;
+    if (thumb.src) URL.revokeObjectURL(thumb.src);
+    thumb.src = URL.createObjectURL(file);
+    thumb.hidden = false;
+    notes.innerHTML = "";
+    notes.hidden = true;
+
+    var mine = ++reads;
+    reading += 1;
+    sync();
+    ocrStatus.textContent = "กำลังอ่านใบเสร็จ…";
+    var body = new FormData();
+    body.append("receipt", file);
+    fetch("/api/read", { method: "POST", body: body })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        if (mine !== reads) return;
+        if (data.error) { ocrStatus.textContent = data.error; return; }
+        suggest($("amount"), data.amount == null ? "" : Number(data.amount).toFixed(2));
+        suggest($("entry_date"), data.date || "");
+        suggest($("description"), data.description || "");
+        (data.notes || []).forEach(function (text) {
+          var item = document.createElement("li");
+          item.textContent = text;
+          notes.appendChild(item);
+        });
+        notes.hidden = notes.children.length === 0;
+        ocrStatus.textContent = "อ่านเสร็จแล้ว ช่องที่มีกรอบสีคือค่าจากใบเสร็จ ตรวจสอบก่อนบันทึก";
+      })
+      .catch(function () {
+        if (mine === reads) ocrStatus.textContent = "อ่านใบเสร็จไม่ได้ในขณะนี้ กรอกข้อมูลเองได้เลย";
+      })
+      .then(function () {
+        reading -= 1;
+        changed(0);
+      });
+  });
+
+  // Writing happens only from inside the popup, never from the page itself.
+  form.addEventListener("submit", function (event) {
+    if (!dialog.open || !key.value || confirmButton.disabled) {
+      event.preventDefault();
+      return;
+    }
+    confirmButton.textContent = "กำลังบันทึก…";
+    setTimeout(function () { confirmButton.disabled = true; back.disabled = true; }, 0);
+  });
+
+  // Coming Back to this page from the browser's history restores it exactly as
+  // it was, popup and all, including a save that has since happened. Start the
+  // check over rather than offer a stale popup.
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted) return;
+    if (dialog.open) dialog.close();
+    changed(0);
+  });
+
+  changed(0);
 })();
 </script>
 {% endblock %}

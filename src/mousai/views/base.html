@@ -47,6 +47,23 @@
     border: 0; border-radius: 10px; cursor: pointer; margin-top: 16px;
   }
   button.quiet { background: transparent; color: var(--muted); border: 1px solid var(--line); }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  .thumb {
+    display: block; max-width: 100%; max-height: 220px; margin-top: 12px;
+    border: 1px solid var(--line); border-radius: 8px; cursor: zoom-in;
+  }
+  .thumb.big { max-height: none; cursor: zoom-out; }
+  .notes { margin: 10px 0 0; padding-left: 18px; font-size: 0.85rem; color: var(--muted); }
+  input.from-ocr { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
+  dialog.sheet {
+    width: min(34rem, calc(100vw - 24px)); max-height: 90vh; max-height: calc(100dvh - 24px);
+    padding: 0; border: 1px solid var(--line); border-radius: 14px;
+    background: var(--card); color: var(--ink); overflow-y: auto;
+  }
+  dialog.sheet::backdrop { background: rgba(0, 0, 0, 0.5); }
+  .sheet-body { padding: 18px 16px 16px; }
+  .sheet-body h2 { font-size: 1.1rem; margin: 0; }
+  .sheet-body button.quiet { margin-top: 8px; }
   .funds { display: flex; gap: 8px; }
   .funds label {
     flex: 1; margin: 0; padding: 12px 8px; text-align: center; cursor: pointer;
@@ -67,6 +84,7 @@
   .bad { color: var(--bad); }
   a { color: var(--accent); }
   .foot { color: var(--muted); font-size: 0.78rem; text-align: center; margin-top: 18px; }
+  .foot.bad { color: var(--bad); font-size: 0.9rem; }
 </style>
 </head>
 <body><div class="wrap">

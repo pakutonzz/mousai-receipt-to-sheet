@@ -9,11 +9,14 @@ and [write cells with explicit types](../../docs/adr/0002-write-cells-with-expli
 
 ## Flow
 
-Photo or form → pick the Page and the requester → preview the parsed values →
-Confirm → one Entry appears in the correct row.
+One page. Photo (optional) → the values it read drop into the fields → pick the
+Page and the requester → ตรวจสอบก่อนบันทึก opens a popup with the warnings and
+the cells that would be written → Confirm → one Entry appears in the correct row.
 
-Every field is editable in the preview. Nothing is ever written without a human
-confirming it.
+Every field stays editable, and what the user typed always beats what OCR read.
+Nothing is ever written without a human confirming it, and Confirm writes only
+the cells that were on screen: it carries the key of the preview it saw, and
+refuses if a fresh read of the Page would produce anything different.
 
 ## Storage and access
 

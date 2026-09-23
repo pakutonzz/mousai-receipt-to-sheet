@@ -50,7 +50,7 @@ column. It uses the service account that is already set up for Sheets.
 
 It switches on by itself once the Vision API is enabled on the project (which needs
 billing attached, even inside the free 1,000 images a month); there is no flag. If the
-API is off, the quota is gone or the network is down, the preview shows a note in Thai
+API is off, the quota is gone or the network is down, the page shows a note in Thai
 and you type the fields. Receipt reading is never load-bearing.
 
 **Measured, not assumed.** `tests/fixtures/receipts/` holds Vision's real output for the
@@ -71,7 +71,7 @@ scoreboard prints.
 | `src/mousai/receipt.py` | Amount, date and description out of receipt text. Pure. |
 | `src/mousai/ocr.py` | Google Cloud Vision. Any failure degrades to typing. |
 | `src/mousai/messages.py` | Thai for the UI, English for the terminal. The domain emits codes. |
-| `src/mousai/web.py` | Three screens: capture, check, confirm. |
+| `src/mousai/web.py` | One page: photo and fields, then a review popup with the cells to be written and the only Confirm. |
 
 Two rules hold the whole thing up, and both are enforced by tests rather than
 by intention:

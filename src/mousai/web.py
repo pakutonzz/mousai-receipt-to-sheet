@@ -1,7 +1,17 @@
-"""The web UI: photograph a receipt, check what it says, write one Entry.
+"""The web UI: one page to photograph a receipt, check it, and write one Entry.
 
-Three steps, and the middle one is the point of the whole system — OCR never
-writes anything. It fills in a form that a person corrects and confirms.
+Everything happens on the home page. A photo is read in the background and what
+it says drops into the form; the cells that would be written are recomputed
+whenever a field changes, and shown in a review popup that holds the only
+button that writes. OCR still never writes anything. It fills in fields that a
+person corrects, and nothing is written until they press Confirm in the popup.
+
+What was shown is what gets written. Every preview carries a key derived from
+the exact cells it displayed, and Confirm recomputes the Placement from a fresh
+read of the Page and refuses unless the key matches. An edit that raced the
+preview, a second person writing to the same Page, or a stale cached read can
+therefore never turn into cells nobody looked at. It also means Confirm cannot
+be pressed at all without a preview having been computed for those exact cells.
 
 The user picks a Page directly rather than a Fund: only they know whether this
 spend belongs on เงินสดย่อย6 or on a page someone opened this morning. The Fund
@@ -15,16 +25,19 @@ of one request and never stored.
 from __future__ import annotations
 
 import datetime as dt
+import hashlib
+import json
+import time
 from pathlib import Path
+from urllib.parse import urlencode
 
-from fastapi import FastAPI, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi import FastAPI, File, Form, Request, UploadFile
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from . import ocr
 from .messages import Notice, thai
-from .page import Formula, PageError
-from .receipt import Reading
+from .page import Formula, Page, PageError
 from .sheets import Sheets, SheetsError, split_ref
 from .templates import BY_FUND, fund_for_page
 
@@ -35,6 +48,14 @@ MAX_IMAGE_BYTES = 12 * 1024 * 1024
 
 # The sentinel the requester dropdown uses for "a name not in the list".
 OTHER = "__other__"
+
+NO_DETAIL = "(no detail)"
+
+# How long one read of a Page serves the live preview. Without it every pause in
+# typing is a Sheets read, and the service account has a single per-user quota
+# shared by the whole clinic. Confirm always reads fresh, so a stale preview can
+# cost the user a second look but never a wrong write.
+PREVIEW_TTL = 30.0
 
 
 def _decimal(raw: str | None) -> float | None:
@@ -58,6 +79,18 @@ def _date(raw: str | None) -> dt.date | None:
         except ValueError:
             continue
     return None
+
+
+def _entry_date(raw: str | None) -> dt.date | None:
+    """Blank means today. Anything else has to be a real date.
+
+    The date field is left blank on purpose rather than pre-filled with today:
+    a pre-filled date is indistinguishable from one the user chose, and it used
+    to beat the date printed on every receipt.
+    """
+    if raw is None or not raw.strip():
+        return dt.date.today()
+    return _date(raw)
 
 
 def _requester(choice: str, typed: str) -> str:
@@ -97,6 +130,23 @@ def cells_for_display(placement, template) -> list[dict]:
     return shown
 
 
+def fingerprint(workbook_id: str, page: str, placement) -> str:
+    """A short key for exactly what one preview showed.
+
+    Covers every cell to be written, formulas included, and the balance on
+    screen: that moves if someone edits an amount higher up without adding a
+    row, which the cells alone would not notice.
+    """
+    shown = {
+        "workbook": workbook_id,
+        "page": page,
+        "cells": sorted((ref, repr(value)) for ref, value in placement.cells.items()),
+        "balance": placement.balance,
+    }
+    blob = json.dumps(shown, ensure_ascii=False, sort_keys=True)
+    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
+
+
 def group_pages(pages, remembered: dict[str, str]) -> list[dict]:
     """Pages for the picker, grouped by Fund and flagged if remembered."""
     groups: dict[str, dict] = {}
@@ -108,9 +158,9 @@ def group_pages(pages, remembered: dict[str, str]) -> list[dict]:
     return list(groups.values())
 
 
-def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
+def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) -> FastAPI:
     app = FastAPI(title="mousai")
-    state: dict = {"sheets": sheets, "reader": reader}
+    state: dict = {"sheets": sheets, "reader": reader, "pages": {}}
 
     def get_sheets() -> Sheets:
         if state["sheets"] is None:
@@ -122,11 +172,27 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
             state["reader"] = ocr.detect()
         return state["reader"]
 
+    def cached_page(workbook_id: str, name: str, template) -> Page:
+        """A recent read of the Page, for the preview only. Never for writing."""
+        now = clock()
+        hit = state["pages"].get((workbook_id, name))
+        if hit is not None and now - hit[0] < PREVIEW_TTL:
+            return hit[1]
+        page = get_sheets().open(workbook_id).page(name, template)
+        state["pages"][(workbook_id, name)] = (now, page)
+        return page
+
+    def forget(workbook_id: str, name: str) -> None:
+        state["pages"].pop((workbook_id, name), None)
+
     def fail(request: Request, notice: Notice, status: int = 400):
         """Errors reach the user in Thai; the English form goes to the log."""
         return TEMPLATES.TemplateResponse(
             request, "error.html", {"message": thai(notice)}, status_code=status
         )
+
+    def refuse(notice: Notice, status: int = 400):
+        return JSONResponse({"error": thai(notice)}, status_code=status)
 
     def survey(workbook):
         """What the pickers need: the Pages, which are remembered, and who spends."""
@@ -150,17 +216,19 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
         *,
         workbook_id: str | None = None,
         message: str | None = None,
+        saved: dict | None = None,
         selected_page: str | None = None,
-        entry_date: str | None = None,
+        entry_date: str = "",
         description: str = "",
         amount: str = "",
         requester: str = "-",
         note: str = "",
+        status_code: int = 200,
     ):
-        """The entry form, optionally carrying back what we already know.
+        """The one page, optionally carrying back what the user already had.
 
-        Reused when a receipt was read but something is still missing, so the
-        person keeps the fields OCR did get instead of starting over.
+        Reused when Confirm refuses, so a person keeps every field they filled
+        in and sees the reason on top, instead of starting over.
         """
         try:
             books = get_sheets().workbooks()
@@ -173,7 +241,8 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
         if not pages:
             return fail(request, Notice("no_pages", {"workbook": workbook.title}))
 
-        default = selected_page or next(
+        names = {name for name, _ in pages}
+        default = selected_page if selected_page in names else next(
             (
                 p["name"]
                 for g in group_pages(pages, remembered)
@@ -182,6 +251,8 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
             ),
             pages[-1][0],
         )
+        if requester not in ("", "-") and requester not in requesters:
+            requesters = [requester, *requesters]
         return TEMPLATES.TemplateResponse(
             request,
             "index.html",
@@ -193,19 +264,32 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
                 "requesters": requesters,
                 "other": OTHER,
                 "ocr_name": get_reader().name,
-                "today": dt.date.today().isoformat(),
                 "message": message,
-                "entry_date": entry_date or dt.date.today().isoformat(),
+                "saved": saved,
+                "entry_date": entry_date,
                 "description": description,
                 "amount": amount,
                 "requester": requester,
                 "note": note,
             },
+            status_code=status_code,
         )
 
     @app.get("/", response_class=HTMLResponse)
-    def index(request: Request):
-        return form_page(request)
+    def index(
+        request: Request,
+        workbook_id: str | None = None,
+        saved_page: str | None = None,
+        saved_row: int | None = None,
+    ):
+        saved = (
+            {"page": saved_page, "row": saved_row}
+            if saved_page and saved_row
+            else None
+        )
+        return form_page(
+            request, workbook_id=workbook_id, saved=saved, selected_page=saved_page
+        )
 
     @app.get("/api/pages")
     def api_pages(workbook_id: str):
@@ -214,14 +298,97 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
             workbook = get_sheets().open(workbook_id)
             pages, remembered, requesters = survey(workbook)
         except SheetsError as error:
-            return JSONResponse({"error": thai(error.notice)}, status_code=400)
+            return refuse(error.notice)
         return {
             "groups": group_pages(pages, remembered),
             "requesters": requesters,
         }
 
-    @app.post("/preview", response_class=HTMLResponse)
-    async def preview(
+    @app.post("/api/read")
+    def api_read(receipt: UploadFile = File(...)):
+        """Suggest field values from a photo. Writes nothing and keeps nothing.
+
+        A failed read is not an error: the reader degrades to an empty Reading
+        with a note, and the person types the fields instead.
+        """
+        if receipt.content_type not in ALLOWED_IMAGES:
+            return refuse(Notice("not_an_image", {"kind": receipt.content_type or "?"}))
+        data = receipt.file.read(MAX_IMAGE_BYTES + 1)
+        if len(data) > MAX_IMAGE_BYTES:
+            return refuse(
+                Notice("image_too_large", {"limit": MAX_IMAGE_BYTES // (1024 * 1024)})
+            )
+        reading = get_reader().read_image(data, receipt.content_type)
+        return {
+            "amount": reading.amount,
+            "date": reading.date.isoformat() if reading.date else None,
+            "description": reading.description or None,
+            "notes": [thai(n) for n in reading.notes],
+        }
+
+    @app.post("/api/preview")
+    def api_preview(
+        workbook_id: str = Form(...),
+        page: str = Form(...),
+        entry_date: str = Form(""),
+        description: str = Form(""),
+        amount: str = Form(""),
+        requester: str = Form("-"),
+        requester_other: str = Form(""),
+        note: str = Form(""),
+    ):
+        """What Confirm would write for these fields. Computed, never written.
+
+        Without an amount there are no cells to show yet, but where the Entry
+        would go is already known, and so is a Page that is full or broken, so
+        those come back straight away.
+        """
+        template = fund_for_page(page)
+        if template is None:
+            return refuse(Notice("unknown_page", {"page": page}))
+        when = _entry_date(entry_date)
+        if when is None:
+            return refuse(Notice("bad_date"))
+        value = _decimal(amount)
+        ready = value is not None and value > 0
+        try:
+            live = cached_page(workbook_id, page, template)
+            placement = live.place(
+                on=when,
+                description=description.strip() or NO_DETAIL,
+                amount=value if ready else 0.0,
+                requester=_requester(requester, requester_other),
+                note=note.strip() or None,
+            )
+        except (SheetsError, PageError) as error:
+            return refuse(error.notice)
+
+        warnings = [
+            thai(w)
+            for w in placement.warnings
+            if ready or w.code != "negative_balance"
+        ]
+        body = {
+            "ready": ready,
+            "fund": template.fund,
+            "page": page,
+            "row": placement.row,
+            "sequence": placement.sequence,
+            "write_date": placement.write_date,
+            "previous_balance": float(live.last_entry.balance),
+            "rows_remaining": placement.rows_remaining,
+            "warnings": warnings,
+        }
+        if ready:
+            body["balance"] = placement.balance
+            body["cells"] = cells_for_display(placement, template)
+            body["key"] = fingerprint(workbook_id, page, placement)
+        else:
+            body["message"] = thai(Notice("amount_to_preview"))
+        return body
+
+    @app.post("/confirm", response_class=HTMLResponse)
+    def confirm(
         request: Request,
         workbook_id: str = Form(...),
         page: str = Form(...),
@@ -231,141 +398,63 @@ def create_app(sheets: Sheets | None = None, reader=None) -> FastAPI:
         requester: str = Form("-"),
         requester_other: str = Form(""),
         note: str = Form(""),
-        receipt: UploadFile | None = None,
+        remember: str = Form(""),
+        key: str = Form(""),
     ):
-        template = fund_for_page(page)
-        if template is None:
-            return fail(request, Notice("unknown_page", {"page": page}))
-
-        reading = Reading()
-        if receipt is not None and receipt.filename:
-            data = await receipt.read()
-            if len(data) > MAX_IMAGE_BYTES:
-                return fail(
-                    request,
-                    Notice("image_too_large", {"limit": MAX_IMAGE_BYTES // (1024 * 1024)}),
-                )
-            if receipt.content_type not in ALLOWED_IMAGES:
-                return fail(
-                    request, Notice("not_an_image", {"kind": receipt.content_type or "?"})
-                )
-            reading = get_reader().read_image(data, receipt.content_type)
-
-        # Anything the user typed wins over anything OCR guessed.
-        chosen_amount = _decimal(amount) or reading.amount
-        chosen_date = _date(entry_date) or reading.date or dt.date.today()
-        chosen_description = description.strip() or reading.description or ""
         chosen_requester = _requester(requester, requester_other)
 
-        if chosen_amount is None or chosen_amount <= 0:
-            # Not an error page. OCR failing to find the total is the ordinary
-            # case this whole screen exists for, and throwing the user back to an
-            # empty form would lose the photo and everything read off it.
+        def again(notice: Notice, status: int):
+            """Back to the page with every field kept and the reason on top."""
             return form_page(
                 request,
                 workbook_id=workbook_id,
-                message=thai(Notice("amount_needed")),
+                message=thai(notice),
                 selected_page=page,
-                entry_date=chosen_date.isoformat(),
-                description=chosen_description,
-                amount="",
+                entry_date=entry_date.strip(),
+                description=description,
+                amount=amount,
                 requester=chosen_requester,
                 note=note,
+                status_code=status,
             )
 
-        try:
-            workbook = get_sheets().open(workbook_id)
-            pages, remembered, requesters = survey(workbook)
-            live = workbook.page(page, template)
-            placement = live.place(
-                on=chosen_date,
-                description=chosen_description or "(no detail)",
-                amount=chosen_amount,
-                requester=chosen_requester,
-                note=note.strip() or None,
-            )
-        except (SheetsError, PageError) as error:
-            return fail(request, error.notice)
-
-        if chosen_requester not in requesters and chosen_requester != "-":
-            requesters = [chosen_requester, *requesters]
-
-        return TEMPLATES.TemplateResponse(
-            request,
-            "preview.html",
-            {
-                "fund": template.fund,
-                "workbook_id": workbook_id,
-                "workbook_title": workbook.title,
-                "page": page,
-                "selected_page": page,
-                "groups": group_pages(pages, remembered),
-                "requesters": requesters,
-                "other": OTHER,
-                "placement": placement,
-                "cells": cells_for_display(placement, template),
-                "warnings": [thai(w) for w in placement.warnings],
-                "previous": live.last_entry,
-                "entry_date": chosen_date.isoformat(),
-                "description": chosen_description,
-                "amount": chosen_amount,
-                "requester": chosen_requester,
-                "note": note,
-                "reading": reading,
-                "reading_notes": [thai(n) for n in reading.notes],
-            },
-        )
-
-    @app.post("/confirm", response_class=HTMLResponse)
-    def confirm(
-        request: Request,
-        workbook_id: str = Form(...),
-        page: str = Form(...),
-        entry_date: str = Form(...),
-        description: str = Form(...),
-        amount: str = Form(...),
-        requester: str = Form("-"),
-        requester_other: str = Form(""),
-        note: str = Form(""),
-        remember: str = Form(""),
-    ):
         template = fund_for_page(page)
         if template is None:
             return fail(request, Notice("unknown_page", {"page": page}))
         value = _decimal(amount)
-        when = _date(entry_date)
+        when = _entry_date(entry_date)
         if value is None or value <= 0 or when is None:
-            return fail(request, Notice("bad_date"))
+            return again(Notice("bad_date"), 400)
 
         try:
             workbook = get_sheets().open(workbook_id)
-            # Recomputed from the submitted fields, never carried over from the
-            # preview: the user may have edited them, and the Page may have moved.
+            # A fresh read, never the preview cache: this is the request that
+            # writes, so it works from what the Page says now.
             live = workbook.page(page, template)
             placement = live.place(
                 on=when,
-                description=description.strip() or "(no detail)",
+                description=description.strip() or NO_DETAIL,
                 amount=value,
-                requester=_requester(requester, requester_other),
+                requester=chosen_requester,
                 note=note.strip() or None,
             )
+            if key != fingerprint(workbook_id, page, placement):
+                forget(workbook_id, page)
+                return again(Notice("preview_stale", {"page": page}), 409)
             workbook.append(live, placement)
             if remember:
                 workbook.remember_page(template.fund, page)
         except (SheetsError, PageError) as error:
-            return fail(request, error.notice)
+            forget(workbook_id, page)
+            return again(error.notice, 400)
 
-        return TEMPLATES.TemplateResponse(
-            request,
-            "done.html",
-            {
-                "page": page,
-                "placement": placement,
-                "workbook_id": workbook_id,
-                "workbook_title": workbook.title,
-                "remembered": bool(remember),
-            },
+        forget(workbook_id, page)
+        # Post/Redirect/Get: reloading the page after a save must not be able
+        # to post the same Entry a second time.
+        target = urlencode(
+            {"workbook_id": workbook_id, "saved_page": page, "saved_row": placement.row}
         )
+        return RedirectResponse(url=f"/?{target}", status_code=303)
 
     return app
 
