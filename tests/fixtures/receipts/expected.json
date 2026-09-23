@@ -42,9 +42,8 @@
  },
  "mix-1128w-4zjUr74AdjM": {
   "amount": 1300.0,
-  "note": "invoice template; ราคารวม 1,300.00",
-  "date": null,
-  "hard_date": "blank template; its date fields are empty labels"
+  "note": "invoice template; ราคารวม 1,300.00; dated วันที่ 1 มกราคม 2025, due ครบกำหนด 1 กุมภาพันธ์ 2025 (only the signature-line dates are blank)",
+  "date": "2025-01-01"
  },
  "mix-1131w-B0MvtbDvMNk": {
   "amount": 20000.0,
