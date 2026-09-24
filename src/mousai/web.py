@@ -27,6 +27,7 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import os
 import time
 from pathlib import Path
 from urllib.parse import urlencode
@@ -36,9 +37,10 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
 from . import ocr
+from .access import SESSION_COOKIE, Limiter, Sessions, passcode_matches
 from .messages import Notice, thai
 from .page import Formula, Page, PageError
-from .sheets import Sheets, SheetsError, split_ref
+from .sheets import Sheets, SheetsError, load_env, split_ref
 from .templates import BY_FUND, fund_for_page
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "views"))
@@ -56,6 +58,37 @@ NO_DETAIL = "(no detail)"
 # shared by the whole clinic. Confirm always reads fresh, so a stale preview can
 # cost the user a second look but never a wrong write.
 PREVIEW_TTL = 30.0
+
+# The Workbook list is what makes a workbook_id acceptable. It changes about
+# once a month, so a minute's cache costs nothing and saves a Drive call on
+# every preview.
+BOOKS_TTL = 60.0
+
+# Every receipt read is a Cloud Vision call on the clinic's billing account.
+# Far above what one clinic photographs, far below a runaway bill.
+READS_PER_HOUR = 60
+READS_PER_DAY = 300
+
+# Wrong passcodes: per client, and across everyone, in any ten minutes.
+TRIES_PER_CLIENT = 5
+TRIES_OVERALL = 50
+TRIES_WINDOW = 600.0
+
+# Anything bigger is refused before the body is parsed or spooled to disk.
+MAX_BODY_BYTES = MAX_IMAGE_BYTES + 1024 * 1024
+
+# Paths that work without a session.
+OPEN_PATHS = {"/login", "/health"}
+
+SECURITY_HEADERS = {
+    "X-Content-Type-Options": "nosniff",
+    # The Confirm button must never be clickable inside someone else's frame.
+    "X-Frame-Options": "DENY",
+    "Content-Security-Policy": "frame-ancestors 'none'",
+    "Referrer-Policy": "same-origin",
+    # Balances and names; no shared cache should keep them.
+    "Cache-Control": "no-store",
+}
 
 
 def _decimal(raw: str | None) -> float | None:
@@ -196,9 +229,62 @@ def group_pages(pages, remembered: dict[str, str]) -> list[dict]:
     return list(groups.values())
 
 
-def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) -> FastAPI:
-    app = FastAPI(title="mousai")
-    state: dict = {"sheets": sheets, "reader": reader, "pages": {}}
+def client_of(request: Request) -> str:
+    """Who is asking, for counting wrong passcodes.
+
+    Behind a tunnel every connection comes from localhost. Uvicorn already
+    swaps in the X-Forwarded-For address, but only for connections from this
+    machine, so a device on the Wi-Fi cannot forge its way around the limit
+    by sending the header itself. Wrong passcodes are capped across everyone
+    as well, in case the tunnel's address is all there is.
+    """
+    return request.client.host if request.client else "?"
+
+
+def create_app(
+    sheets: Sheets | None = None,
+    reader=None,
+    clock=time.monotonic,
+    *,
+    passcode: str | None = None,
+    session_secret: bytes | None = None,
+    wall=time.time,
+    read_limits: tuple[int, int] = (READS_PER_HOUR, READS_PER_DAY),
+) -> FastAPI:
+    """The app. With a passcode, everything but /login and /health needs a
+    session. Without one it is open, which only suits a trusted local network.
+    """
+    # No interactive API console: it would be a second, unguarded front door
+    # to everything the page does.
+    app = FastAPI(title="mousai", docs_url=None, redoc_url=None, openapi_url=None)
+    state: dict = {"sheets": sheets, "reader": reader, "pages": {}, "books": None}
+    sessions = Sessions(session_secret or os.urandom(32), wall=wall)
+    tries_by_client = Limiter(TRIES_PER_CLIENT, TRIES_WINDOW, clock)
+    tries_overall = Limiter(TRIES_OVERALL, TRIES_WINDOW, clock)
+    reads_hourly = Limiter(read_limits[0], 3600.0, clock)
+    reads_daily = Limiter(read_limits[1], 86400.0, clock)
+
+    def signed_in(request: Request) -> bool:
+        return not passcode or sessions.valid(request.cookies.get(SESSION_COOKIE))
+
+    @app.middleware("http")
+    async def guard(request: Request, call_next):
+        length = request.headers.get("content-length", "")
+        if length.isdigit() and int(length) > MAX_BODY_BYTES:
+            response = JSONResponse(
+                {"error": thai(Notice("request_too_large"))}, status_code=413
+            )
+        elif request.url.path in OPEN_PATHS or signed_in(request):
+            response = await call_next(request)
+        elif request.url.path.startswith("/api/"):
+            response = JSONResponse(
+                {"error": thai(Notice("login_required"))}, status_code=401
+            )
+        else:
+            response = RedirectResponse("/login", status_code=303)
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        return response
 
     def get_sheets() -> Sheets:
         if state["sheets"] is None:
@@ -222,6 +308,25 @@ def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) 
 
     def forget(workbook_id: str, name: str) -> None:
         state["pages"].pop((workbook_id, name), None)
+
+    def books() -> list:
+        """The Workbooks in the folder: the picker, and the only ids accepted.
+
+        workbook_id arrives from the browser. Unchecked, it would let anyone
+        read and write any spreadsheet the service account can reach, the
+        scratch Workbook included.
+        """
+        now = clock()
+        cached = state["books"]
+        if cached is not None and now - cached[0] < BOOKS_TTL:
+            return cached[1]
+        found = get_sheets().workbooks()
+        state["books"] = (now, found)
+        return found
+
+    def check_book(workbook_id: str) -> None:
+        if workbook_id not in {book.id for book in books()}:
+            raise SheetsError(Notice("unknown_workbook"))
 
     def fail(request: Request, notice: Notice, status: int = 400):
         """Errors reach the user in Thai; the English form goes to the log."""
@@ -249,6 +354,49 @@ def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) 
     def health():
         return {"ok": True, "ocr": get_reader().name}
 
+    def login_page(request: Request, notice: Notice | None = None, status: int = 200):
+        return TEMPLATES.TemplateResponse(
+            request,
+            "login.html",
+            {"message": thai(notice) if notice else None},
+            status_code=status,
+        )
+
+    @app.get("/login", response_class=HTMLResponse)
+    def login_form(request: Request):
+        if signed_in(request):
+            return RedirectResponse("/", status_code=303)
+        return login_page(request)
+
+    @app.post("/login", response_class=HTMLResponse)
+    def login(request: Request, code: str = Form("")):
+        if not passcode:
+            return RedirectResponse("/", status_code=303)
+        who = client_of(request)
+        # Checked before the passcode, so a locked-out guesser learns nothing
+        # even when the guess happens to be right.
+        if tries_by_client.blocked(who) or tries_overall.blocked():
+            return login_page(request, Notice("login_locked"), 429)
+        if not passcode_matches(code.strip(), passcode):
+            tries_by_client.hit(who)
+            tries_overall.hit()
+            return login_page(request, Notice("login_wrong"), 401)
+        response = RedirectResponse("/", status_code=303)
+        response.set_cookie(
+            SESSION_COOKIE,
+            sessions.issue(),
+            max_age=sessions.seconds,
+            httponly=True,
+            # Lax, not Strict: a link opened from a chat app is a cross-site
+            # navigation, and Strict would ask for the passcode every time.
+            # Lax still withholds the cookie from cross-site POSTs.
+            samesite="lax",
+            secure=request.url.scheme == "https"
+            or request.headers.get("x-forwarded-proto") == "https",
+            path="/",
+        )
+        return response
+
     def form_page(
         request: Request,
         *,
@@ -269,10 +417,12 @@ def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) 
         in and sees the reason on top, instead of starting over.
         """
         try:
-            books = get_sheets().workbooks()
-            if not books:
+            found = books()
+            if not found:
                 return fail(request, Notice("no_workbooks"))
-            workbook = get_sheets().open(workbook_id or books[0].id)
+            if workbook_id:
+                check_book(workbook_id)
+            workbook = get_sheets().open(workbook_id or found[0].id)
             pages, remembered, requesters = survey(workbook)
         except SheetsError as error:
             return fail(request, error.notice)
@@ -295,7 +445,7 @@ def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) 
             request,
             "index.html",
             {
-                "workbooks": books,
+                "workbooks": found,
                 "workbook_id": workbook.id,
                 "groups": group_pages(pages, remembered),
                 "selected_page": default,
@@ -333,6 +483,7 @@ def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) 
     def api_pages(workbook_id: str):
         """Repopulate the Page and requester pickers when the Workbook changes."""
         try:
+            check_book(workbook_id)
             workbook = get_sheets().open(workbook_id)
             pages, remembered, requesters = survey(workbook)
         except SheetsError as error:
@@ -356,6 +507,10 @@ def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) 
             return refuse(
                 Notice("image_too_large", {"limit": MAX_IMAGE_BYTES // (1024 * 1024)})
             )
+        if reads_hourly.blocked() or reads_daily.blocked():
+            return refuse(Notice("ocr_busy"), 429)
+        reads_hourly.hit()
+        reads_daily.hit()
         reading = get_reader().read_image(data, receipt.content_type)
         return {
             "amount": reading.amount,
@@ -390,6 +545,7 @@ def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) 
         value = _decimal(amount)
         ready = value is not None and value > 0
         try:
+            check_book(workbook_id)
             live = cached_page(workbook_id, page, template)
             placement = live.place(
                 on=when,
@@ -471,6 +627,7 @@ def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) 
             return again(Notice("bad_date"), 400)
 
         try:
+            check_book(workbook_id)
             workbook = get_sheets().open(workbook_id)
             # A fresh read, never the preview cache: this is the request that
             # writes, so it works from what the Page says now.
@@ -503,4 +660,15 @@ def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) 
     return app
 
 
-app = create_app()
+def settings_from_env() -> dict:
+    """MOUSAI_PASSCODE turns the door on. MOUSAI_SESSION_SECRET, if set, keeps
+    people signed in across restarts; unset, a restart signs everyone out."""
+    env = load_env()
+    secret = env.get("MOUSAI_SESSION_SECRET")
+    return {
+        "passcode": env.get("MOUSAI_PASSCODE") or None,
+        "session_secret": secret.encode("utf-8") if secret else None,
+    }
+
+
+app = create_app(**settings_from_env())

@@ -20,7 +20,48 @@ python scripts/serve.py
 ```
 
 It prints a `http://192.168.x.x:8000` address to open on a phone on the same
-wifi. There is no login: it is built for a trusted network, not the internet.
+wifi.
+
+### Access
+
+With `MOUSAI_PASSCODE` set in `.env`, every page asks for it once and then
+remembers the phone for 12 hours. Without it the app is open to anyone who can
+reach it, and `serve.py` says so on startup. That is only fit for a trusted
+network. **Never put it behind a tunnel or on the internet without a
+passcode**: the app writes to the clinic's cash book, and every receipt read
+is billed to the clinic's Cloud Vision account.
+
+- **Revoking access.** Change the passcode and restart the server. A restart
+  alone signs everyone out, because sessions are signed with a key made at
+  startup (set `MOUSAI_SESSION_SECRET` if you would rather they survived).
+- **Wrong passcodes.** Five from one address in ten minutes, or fifty from
+  everyone, and logins pause until the window passes.
+- **Receipt reading** is capped at 60 an hour and 300 a day, well above what
+  one clinic photographs. Past the cap the page asks for the fields by hand.
+- **Only the folder's Workbooks** are accepted, whatever `workbook_id` a
+  browser sends, and FastAPI's `/docs` console is switched off.
+
+### Reaching it from outside the clinic wifi
+
+Tailscale is the simplest temporary way, because nothing needs installing on
+the phones. With the passcode set, and the server on this machine only:
+
+```
+python scripts/serve.py --host 127.0.0.1
+tailscale funnel --bg 8000
+```
+
+`funnel` prints a `https://<machine>.<tailnet>.ts.net` address that any phone
+can open. The first time, it may ask for Funnel to be allowed on the tailnet
+through a link to the Tailscale admin page. This machine has to stay on and
+awake for as long as it is up. Take it down with:
+
+```
+tailscale funnel reset
+```
+
+For access limited to devices signed in to your tailnet, use `tailscale serve`
+instead of `funnel`. Each phone then needs the Tailscale app.
 
 ## Setting up from scratch
 

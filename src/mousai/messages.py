@@ -59,6 +59,12 @@ TH = {
     "shop_seen": "ร้าน: {shop}",
     "shop_not_found": "ร้าน: หาไม่พบ",
     "amount_to_preview": "กรอกจำนวนเงิน แล้วกดตรวจสอบก่อนบันทึก",
+    "login_required": "กรุณาใส่รหัสเข้าใช้งานก่อน",
+    "login_wrong": "รหัสไม่ถูกต้อง",
+    "login_locked": "ใส่รหัสผิดหลายครั้งเกินไป กรุณารอสักครู่แล้วลองใหม่",
+    "unknown_workbook": "ไม่พบไฟล์นี้ในโฟลเดอร์ที่ใช้งาน",
+    "ocr_busy": "อ่านใบเสร็จครบจำนวนที่อนุญาตในช่วงนี้แล้ว กรุณากรอกเอง",
+    "request_too_large": "ข้อมูลที่ส่งมาใหญ่เกินไป",
     "preview_stale": "ข้อมูลในหน้า {page} เปลี่ยนไประหว่างที่ตรวจสอบ (อาจมีคนบันทึกพร้อมกัน) ยังไม่ได้บันทึก กรุณาตรวจสอบเซลล์อีกครั้ง",
 }
 
@@ -99,6 +105,12 @@ EN = {
     "shop_seen": "shop: {shop}",
     "shop_not_found": "shop: not found",
     "amount_to_preview": "type an amount, then review before saving",
+    "login_required": "enter the passcode first",
+    "login_wrong": "wrong passcode",
+    "login_locked": "too many wrong passcodes; wait a few minutes and try again",
+    "unknown_workbook": "that spreadsheet is not in the Workbook folder",
+    "ocr_busy": "the receipt-reading limit for now has been reached; type the fields",
+    "request_too_large": "the request is too large",
     "preview_stale": "{page} changed while it was being checked (someone else may have written to it); nothing was written, check the cells again",
 }
 

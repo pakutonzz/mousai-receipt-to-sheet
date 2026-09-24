@@ -3,8 +3,11 @@
     python scripts/serve.py
 
 Binds every interface so the clinic's phones can reach it, and prints the LAN
-address to type in. There is no login: this is meant for a trusted network, not
-the open internet.
+address to type in.
+
+With MOUSAI_PASSCODE set in .env, every page asks for it first. Without it
+there is no login at all, which is only fit for a trusted network: never put
+the app behind a tunnel or on the internet without a passcode.
 """
 
 from __future__ import annotations
@@ -42,7 +45,8 @@ def main() -> int:
     from mousai import ocr
     from mousai.sheets import load_env
 
-    reader = ocr.detect(load_env())
+    env = load_env()
+    reader = ocr.detect(env)
     print(f"\n  mousai")
     print(f"  on this machine   http://127.0.0.1:{args.port}")
     if args.host == "0.0.0.0":
@@ -50,6 +54,12 @@ def main() -> int:
     print(f"  receipt reading   {reader.name}")
     if reader.name == "none":
         print("                    (enable the Cloud Vision API to switch it on)")
+    if env.get("MOUSAI_PASSCODE"):
+        print("  access            passcode required")
+    else:
+        print("  access            OPEN: no passcode set")
+        print("                    Anyone who can reach this address can write to the")
+        print("                    Workbook. Set MOUSAI_PASSCODE in .env before exposing it.")
     print()
 
     uvicorn.run(
