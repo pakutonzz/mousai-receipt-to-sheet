@@ -206,8 +206,7 @@ _gitignore_has() {
   fi
 }
 
-FOLDER_ID="1Ew4F4HTwJ6TJ5uG3YLKinjzpzEVTuunV"
-WORKBOOK_ID="1TNyT7hZ7TUXyw0szJGjET6H-T_NaqqbXPoeuJytLTss"
+# Real Drive ids are asked for and kept in .env, never written into the repo.
 KEY_PATH="secrets/service-account.json"
 
 if [[ ! -f CLAUDE.md || ! -d .git ]]; then
@@ -292,6 +291,9 @@ write_env GOOGLE_APPLICATION_CREDENTIALS "$KEY_PATH"
 stage "Share the Drive folder"
 say "Sharing the FOLDER, not a file, is what makes next month Workbook work"
 say "without anyone touching this setup again."
+step "In Google Drive, open the folder the monthly Workbooks live in."
+ask MOUSAI_DRIVE_FOLDER_ID "Paste the folder URL (or just its id):"
+FOLDER_ID="$(_extract_id "$MOUSAI_DRIVE_FOLDER_ID")"
 write_env MOUSAI_DRIVE_FOLDER_ID "$FOLDER_ID"
 open_url "https://drive.google.com/drive/folders/${FOLDER_ID}"
 step "Click the folder name at the top, then Share, then Share."
@@ -305,6 +307,10 @@ pause "Shared as Editor?"
 # -- 6 ---------------------------------------------------------------------
 stage "Put the Workbook in the folder"
 say "The folder is empty right now, so the app has nothing to find."
+step "Open this month's Workbook in Google Sheets."
+ask MOUSAI_SPREADSHEET_ID "Paste the Workbook URL (or just its id):"
+WORKBOOK_ID="$(_extract_id "$MOUSAI_SPREADSHEET_ID")"
+write_env MOUSAI_SPREADSHEET_ID "$WORKBOOK_ID"
 open_url "https://docs.google.com/spreadsheets/d/${WORKBOOK_ID}/edit"
 step "File, then Move, then choose M_example_sheets, then Move."
 pause "Moved?"

@@ -73,7 +73,7 @@ class NeverBreaksTheManualPath(unittest.TestCase):
 
     def test_a_disabled_api_degrades_to_typing(self):
         reading = reader_raising(
-            HttpErrorLike("Cloud Vision API has not been used in project 380811892204")
+            HttpErrorLike("Cloud Vision API has not been used in project 123456789012")
         ).read_image(IMAGE, "image/jpeg")
         self.assertTrue(reading.empty)
         self.assertEqual(reading.notes[0].code, "ocr_unavailable")

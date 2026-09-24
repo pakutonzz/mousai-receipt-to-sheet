@@ -12,10 +12,100 @@ different layouts, without breaking it.
 - **What was agreed and why:** [.scratch/receipt-to-sheet/spec.md](.scratch/receipt-to-sheet/spec.md)
 - **The two decisions worth recording:** [docs/adr](docs/adr)
 
+## เริ่มต้นใช้งาน (Quick start)
+
+> ห้าม commit `.env`, ไฟล์ JSON ของ service account ใน `secrets/` หรือ token จริงใด ๆ
+> ทั้งสองอย่างอยู่ใน `.gitignore` แล้ว ใช้ `.env.example` เป็นแม่แบบแทน
+
+### 1. วิธีรัน
+
+ใช้ Python 3.11 (ทดสอบกับ 3.11)
+
+```
+python -m pip install -r requirements.txt
+bash scripts/setup-google-access.sh
+python scripts/serve.py
+```
+
+ครั้งแรกให้รัน `setup-google-access.sh` ซึ่งจะพาทำทีละขั้น ตั้งแต่สร้าง Google Cloud
+project, service account และ key ไปจนถึงแชร์โฟลเดอร์ใน Drive แล้วสร้าง `.env` ให้
+ถ้ามีค่าครบอยู่แล้ว ให้ใช้ `cp .env.example .env` แล้วกรอกเองแทนการรัน wizard
+
+### 2. `.env.example`
+
+แม่แบบของทุกค่าที่ใช้ มีคำอธิบายกำกับทุกบรรทัด ค่าที่จำเป็นต้องมี:
+
+| ตัวแปร | ใช้ทำอะไร |
+| --- | --- |
+| `GOOGLE_APPLICATION_CREDENTIALS` | path ของไฟล์ JSON key ของ service account (เก็บไว้ใน `secrets/`) |
+| `MOUSAI_DRIVE_FOLDER_ID` | โฟลเดอร์ Drive ที่เก็บ Workbook รายเดือน แอปหาไฟล์จากที่นี่ |
+| `MOUSAI_TEST_SPREADSHEET_ID` | สำเนา Workbook สำหรับทดสอบ อยู่นอกโฟลเดอร์ แอปจะไม่แสดงให้เลือก |
+
+ค่าที่ไม่บังคับ: `MOUSAI_SPREADSHEET_ID` (ใช้กับ `scripts/reconcile.py`),
+`MOUSAI_PASSCODE`, `MOUSAI_SESSION_SECRET` และ `GCP_PROJECT_ID` /
+`GOOGLE_SERVICE_ACCOUNT_EMAIL` (ใช้ใน wizard)
+
+### 3. `requirements.txt`
+
+รายการ Python package ทั้งหมด ได้แก่ Google API client, FastAPI, uvicorn,
+Jinja2 และ python-multipart ส่วน `httpx` ใช้เฉพาะตอนรันเทสต์
+
+### 4. คำสั่ง start app
+
+```
+python scripts/serve.py
+```
+
+เปิดที่ `http://127.0.0.1:8000` บนเครื่องนี้ และจะพิมพ์ที่อยู่
+`http://192.168.x.x:8000` สำหรับโทรศัพท์ที่ต่อ wifi วงเดียวกัน ตัวเลือกเสริม:
+`--port 8001`, `--host 127.0.0.1` (เปิดให้เฉพาะเครื่องนี้), `--reload` (ตอนแก้โค้ด)
+
+รันเทสต์: `python -m unittest discover -s tests`
+
+### 5. คำสั่ง start Telegram bot
+
+🚧 **กำลังพัฒนา (in progress)** ยังไม่มีโค้ดของ bot และยังไม่มีคำสั่ง start
+ใน `.env.example` เตรียมช่อง `TELEGRAM_BOT_TOKEN` ไว้แล้ว (ตอนนี้ยังไม่มีโค้ดส่วนไหนอ่านค่านี้)
+
+### 6. โครงสร้าง Google Sheet / columns ที่ใช้
+
+- **โฟลเดอร์ Drive** (`MOUSAI_DRIVE_FOLDER_ID`) หนึ่งโฟลเดอร์ เก็บ Workbook เดือนละหนึ่งไฟล์
+  ต้องเป็นไฟล์ Google Sheets จริง ไม่ใช่ `.xlsx` ที่อัปโหลดไว้เฉย ๆ และต้องแชร์โฟลเดอร์ให้
+  service account เป็น Editor
+- **หน้า (sheet) ที่เขียนได้** คือ sheet ที่ชื่อขึ้นต้นด้วย `เงินสดย่อย` หรือ `เงินฉุกเฉิน`
+  เช่น `เงินสดย่อย6`, `เงินฉุกเฉิน3` ส่วน sheet อื่น เช่น ทะเบียน `ย่อย` หรือ
+  `ใบรับรองแทน…` แอปจะไม่เขียนลงไป
+- **ช่วงข้อมูลในแต่ละหน้า** แอปหาเองทุกครั้ง ไม่ได้ตั้งค่าตายตัว เริ่มจากแถวถัดจากหัวตาราง
+  (แถวที่มีคำว่า `ว/ด/ป`) ไปจนถึงแถวก่อนแถวที่มีคำว่า `รวมทั้งสิ้น` แถวแรกต้องเป็นยอดยกมา
+  ที่มีคงเหลือ แอปจะเขียนลงแถวว่างแถวแรกต่อจากรายการสุดท้าย ไม่ใช้ "แถวสุดท้าย + 1"
+  และจะไม่เขียนทับแถวรวมหรือช่องลายเซ็น ถ้าหน้าเต็มจะแจ้งเตือนแทน
+
+| ข้อมูล | หัวคอลัมน์ในชีต | เงินสดย่อย | เงินฉุกเฉิน | สิ่งที่แอปเขียน |
+| --- | --- | --- | --- | --- |
+| วันที่ | ว/ด/ป | B | A | วันที่ เฉพาะรายการแรกของวันนั้น |
+| ลำดับ | ลำดับ | C | B | เริ่ม 1 เมื่อขึ้นวันใหม่ วันเดียวกัน +1 |
+| รายละเอียด | รายละเอียด | D | C | ข้อความ |
+| ยอดรับ | ยอดรับ | E | D | `-` |
+| ยอดจ่าย | จำนวนที่เบิก | F | E | จำนวนเงิน |
+| คงเหลือ | คงเหลือ | G | F | สูตร เช่น `=G20-F21` (คงเหลือแถวบน − ยอดจ่าย) |
+| ผู้เบิก | ผู้เบิก | H | G | ชื่อ หรือ `-` |
+| หมายเหตุ | ผู้อนุมัติ | I | H | ช่องหมายเหตุของแอป เขียนเฉพาะเมื่อกรอก ⚠ |
+
+⚠ หัวคอลัมน์สุดท้ายในชีตจริงคือ **ผู้อนุมัติ** แต่ตอนนี้แอปเขียนช่อง "หมายเหตุ" ลงคอลัมน์นี้
+ยังต้องตัดสินใจว่าจะให้เป็นแบบไหน
+
+- **sheet ซ่อนชื่อ `_mousai`** แอปสร้างเองตอนบันทึกครั้งแรกที่เปิดสวิตช์ "จำหน้านี้ไว้"
+  มีสองคอลัมน์คือ `fund` และ `active_page` ใช้จำว่าแต่ละกองทุนใช้หน้าไหนอยู่
+
+### 7. Bot ใช้ polling หรือ webhook
+
+🚧 **กำลังพัฒนา (in progress)** ยังไม่ได้ตัดสินใจ ตัว web app ไม่ได้ใช้ทั้งสองแบบ
+
 ## Running it
 
 ```
 python -m pip install -r requirements.txt
+bash scripts/setup-google-access.sh    # first time; or cp .env.example .env and fill it in
 python scripts/serve.py
 ```
 
