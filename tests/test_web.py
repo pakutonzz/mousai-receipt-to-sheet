@@ -199,10 +199,25 @@ class OnePage(unittest.TestCase):
         self.assertIn('name="remember"', dialog)
 
     def test_the_photo_is_never_posted_with_confirm(self):
-        """The file input has no name, so the form cannot carry the image."""
+        """The file inputs have no name, so the form cannot carry the image."""
         client, _, _ = build()
-        tag = re.search(r'<input type="file"[^>]*>', client.get("/").text).group(0)
-        self.assertNotIn("name=", tag)
+        tags = re.findall(r'<input type="file"[^>]*>', client.get("/").text)
+        self.assertEqual(len(tags), 2)  # the camera, and a photo already taken
+        for tag in tags:
+            self.assertNotIn("name=", tag)
+
+    def test_offers_the_gallery_as_well_as_the_camera(self):
+        client, _, _ = build()
+        tags = re.findall(r'<input type="file"[^>]*>', client.get("/").text)
+        self.assertEqual(sum('capture="environment"' in t for t in tags), 1)
+
+    def test_without_ocr_there_is_nothing_to_photograph(self):
+        client = TestClient(
+            create_app(FakeSheets(build()[1]), FakeReader(name="none"))
+        )
+        body = client.get("/").text
+        self.assertNotIn('type="file"', body)
+        self.assertIn("ยังไม่ได้เปิดระบบอ่านใบเสร็จ", body)
 
     def test_the_old_two_step_route_is_gone(self):
         client, _, _ = build()
@@ -237,7 +252,15 @@ class PagePicker(unittest.TestCase):
 
     def test_marks_the_remembered_page(self):
         client, _, _ = build(with_config=True)
-        self.assertIn("●", client.get("/").text)
+        body = client.get("/").text
+        self.assertIn(f'<option value="{PAGE}" selected data-remembered="1">', body)
+        self.assertRegex(body, r'id="page-recent">ใช้ล่าสุด')
+
+    def test_nothing_is_marked_when_nothing_is_remembered(self):
+        client, _, _ = build()
+        body = client.get("/").text
+        self.assertNotIn('data-remembered="1"', body)
+        self.assertRegex(body, r'id="page-recent" hidden>')
 
     def test_api_serves_the_pages_for_another_workbook(self):
         client, _, _ = build()
@@ -261,13 +284,22 @@ class PagePicker(unittest.TestCase):
 class RequesterPicker(unittest.TestCase):
     def test_offers_names_already_used_in_the_column(self):
         client, _, _ = build()
-        self.assertIn('<option value="Monny"', client.get("/").text)
+        self.assertIn('name="requester" value="Monny"', client.get("/").text)
 
     def test_always_offers_the_dash_and_a_manual_option(self):
         client, _, _ = build()
         body = client.get("/").text
-        self.assertIn('<option value="-"', body)
-        self.assertIn(f'<option value="{OTHER}"', body)
+        self.assertIn('name="requester" value="-" checked', body)
+        self.assertIn(f'name="requester" value="{OTHER}"', body)
+
+    def test_each_name_is_a_real_radio_button(self):
+        """Tappable chips, but still one choice, reachable by keyboard."""
+        client, _, _ = build()
+        body = client.get("/").text
+        self.assertEqual(
+            len(re.findall(r'<input type="radio" name="requester"', body)),
+            len(re.findall(r'name="requester" value=', body)),
+        )
 
     def test_choosing_a_name_writes_that_name(self):
         client, service, _ = build()
@@ -324,7 +356,26 @@ class LivePreview(unittest.TestCase):
 
     def test_shows_the_negative_balance_warning_in_thai(self):
         client, _, _ = build()
-        self.assertTrue(any("ติดลบ" in w for w in preview(client)["warnings"]))
+        self.assertTrue(any("ติดลบ" in w["text"] for w in preview(client)["warnings"]))
+
+    def test_money_going_wrong_is_red_and_the_rest_amber(self):
+        client, _, _ = build()
+        levels = {
+            ("ติดลบ" in w["text"], "ย้อนหลัง" in w["text"]): w["level"]
+            for w in preview(client, entry_date="2025-01-01")["warnings"]
+        }
+        self.assertEqual(levels[(True, False)], "danger")
+        self.assertEqual(levels[(False, True)], "warn")
+
+    def test_free_rows_now_and_after_this_entry(self):
+        """The page shows room left now; the review shows room left after."""
+        client, _, _ = build()
+        body = preview(client)
+        self.assertEqual(body["free_rows"], body["rows_remaining"] + 1)
+
+    def test_carries_the_amount_for_the_review(self):
+        client, _, _ = build()
+        self.assertEqual(preview(client, amount="1,300")["amount"], 1300.0)
 
     def test_shows_rows_remaining(self):
         client, _, _ = build()
@@ -469,7 +520,7 @@ class ReceiptDates(unittest.TestCase):
         look at twice, so the backdated warning has to fire."""
         client, _, _ = build()
         body = preview(client, entry_date="2025-01-01")
-        self.assertTrue(any("ย้อนหลังกว่าแถวบน" in w for w in body["warnings"]))
+        self.assertTrue(any("ย้อนหลังกว่าแถวบน" in w["text"] for w in body["warnings"]))
 
     def test_no_date_anywhere_means_today(self):
         client, _, _ = build()
@@ -497,7 +548,7 @@ class Confirm(unittest.TestCase):
         self.assertEqual(rows, {20})
         home = client.get(response.headers["location"]).text
         self.assertIn("บันทึกแล้ว", home)
-        self.assertIn("แถว <strong>21</strong>", home)
+        self.assertIn(f"{PAGE} · แถว 21", home)
 
     def test_without_a_preview_nothing_is_written(self):
         client, service, _ = build()
@@ -532,7 +583,7 @@ class Confirm(unittest.TestCase):
         self.assertEqual(rendered_value(body, "amount"), "99")
         self.assertEqual(rendered_value(body, "description"), "ค่ากาแฟ")
         self.assertEqual(rendered_value(body, "entry_date"), "2026-08-03")
-        self.assertIn('<option value="พี่นวล" selected', body)
+        self.assertIn('name="requester" value="พี่นวล" checked', body)
 
     def test_posting_the_same_confirm_twice_writes_once(self):
         """A double tap, or a resend. The first write moves the free row, so the
@@ -585,10 +636,32 @@ class CellPreview(unittest.TestCase):
     """The 'cells to be written' table is for a human, not for a machine."""
 
     def test_the_balance_shows_the_number_not_the_formula(self):
+        """The value is the number. The formula rides alongside, labelled, so a
+        reader can see the balance is live rather than typed in."""
         client, _, _ = build()
-        body = preview(client)
-        self.assertEqual(cell(body, "G21"), "-2.75")
-        self.assertNotIn("=G20-F21", str(body))
+        cells = {c["ref"]: c for c in preview(client)["cells"]}
+        self.assertEqual(cells["G21"]["value"], "-2.75")
+        self.assertEqual(cells["G21"]["formula"], "=G20-F21")
+        self.assertEqual(
+            [ref for ref, c in cells.items() if c["formula"]], ["G21"]
+        )
+        self.assertFalse(any(c["value"].startswith("=") for c in cells.values()))
+
+    def test_each_cell_says_which_column_it_is(self):
+        client, _, _ = build()
+        labels = {c["ref"]: c["label"] for c in preview(client)["cells"]}
+        self.assertEqual(labels["B21"], "วันที่")
+        self.assertEqual(labels["F21"], "ยอดจ่าย")
+        self.assertEqual(labels["G21"], "คงเหลือ")
+        self.assertEqual(labels["H21"], "ผู้เบิก")
+
+    def test_the_labels_follow_the_emergency_layout(self):
+        """Same names, different letters: the emergency Fund starts at A."""
+        client, _, _ = build()
+        body = preview(client, page=EMERGENCY_PAGE, amount="780")
+        labels = {c["ref"]: c["label"] for c in body["cells"]}
+        self.assertEqual(labels["A29"], "วันที่")
+        self.assertEqual(labels["F29"], "คงเหลือ")
 
     def test_the_date_shows_as_a_date_not_a_serial(self):
         client, _, _ = build()

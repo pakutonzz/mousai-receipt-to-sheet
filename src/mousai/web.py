@@ -130,6 +130,44 @@ def cells_for_display(placement, template) -> list[dict]:
     return shown
 
 
+# What each column holds, so the review can say "F21 ยอดจ่าย" rather than
+# leaving the reader to remember which letter is which on this Fund's layout.
+COLUMN_LABELS = {
+    "date": "วันที่",
+    "sequence": "ลำดับ",
+    "description": "รายละเอียด",
+    "received": "ยอดรับ",
+    "disbursed": "ยอดจ่าย",
+    "balance": "คงเหลือ",
+    "requester": "ผู้เบิก",
+    "note": "หมายเหตุ",
+}
+
+# Warnings that mean the money itself looks wrong are shown in red; the rest
+# (backdated, a Top-up above, the Page filling up) are worth a look, in amber.
+DANGER = {"negative_balance"}
+
+
+def labelled_cells(placement, template) -> list[dict]:
+    """cells_for_display, plus each column's name and the balance's formula.
+
+    The value shown stays the number, per cells_for_display. The formula rides
+    alongside so the reader can see the balance is live, not typed in.
+    """
+    names = {getattr(template, field): label for field, label in COLUMN_LABELS.items()}
+    out = []
+    for cell in cells_for_display(placement, template):
+        written = placement.cells[cell["ref"]]
+        out.append(
+            {
+                **cell,
+                "label": names.get(cell["ref"].rstrip("0123456789"), ""),
+                "formula": str(written) if isinstance(written, Formula) else None,
+            }
+        )
+    return out
+
+
 def fingerprint(workbook_id: str, page: str, placement) -> str:
     """A short key for exactly what one preview showed.
 
@@ -364,7 +402,10 @@ def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) 
             return refuse(error.notice)
 
         warnings = [
-            thai(w)
+            {
+                "text": thai(w),
+                "level": "danger" if w.code in DANGER else "warn",
+            }
             for w in placement.warnings
             if ready or w.code != "negative_balance"
         ]
@@ -376,12 +417,15 @@ def create_app(sheets: Sheets | None = None, reader=None, clock=time.monotonic) 
             "sequence": placement.sequence,
             "write_date": placement.write_date,
             "previous_balance": float(live.last_entry.balance),
+            # Free rows now, and free rows once this Entry is in.
+            "free_rows": live.rows_remaining,
             "rows_remaining": placement.rows_remaining,
             "warnings": warnings,
         }
         if ready:
+            body["amount"] = value
             body["balance"] = placement.balance
-            body["cells"] = cells_for_display(placement, template)
+            body["cells"] = labelled_cells(placement, template)
             body["key"] = fingerprint(workbook_id, page, placement)
         else:
             body["message"] = thai(Notice("amount_to_preview"))
