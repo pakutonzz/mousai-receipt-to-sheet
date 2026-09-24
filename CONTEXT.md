@@ -22,7 +22,7 @@ _Avoid_: Expense, withdrawal, debit
 What remains in a Fund after an Entry. Each Entry's balance is derived from the one above it, so Entries in a Page form a chain.
 
 **Requester** (ผู้เบิก):
-The person who spent the money and is claiming it back. Who counts as one is not configured anywhere: the names are whoever already appears in the ผู้เบิก column of the Workbook.
+The person who spent the money and is claiming it back. The names are whoever already appears in the ผู้เบิก column of the Workbook; a Recorder's default Requester is one of them.
 _Avoid_: Payer, employee, user
 
 ### The workbook
@@ -61,6 +61,14 @@ A separate signed form declaring spends for which no receipt could be obtained. 
 
 ### The flow
 
+**Recorder** (ผู้บันทึก):
+A person the system knows by name and allows to record Transactions, each with a default Requester. The Recorder is who hands in the receipt; the Requester is who spent the money. Usually the same person, not always.
+_Avoid_: User, staff, member, submitter
+
+**Review** (ตรวจสอบก่อนบันทึก):
+Exactly the cells a Transaction will write, shown before anything is written. Confirming writes those cells or nothing; if the Page has changed since, the Review is stale and has to be seen again.
+_Avoid_: Confirmation screen
+
 **Transaction**:
-One thing the user confirms in the app. Today a Transaction becomes exactly one Entry; it is expected to one day produce several, across more than one sheet.
+One thing a person confirms after seeing its Review. Today a Transaction becomes exactly one Entry; it is expected to one day produce several, across more than one sheet.
 _Avoid_: Record, submission, receipt
