@@ -1,0 +1,126 @@
+{
+ "_README": "Ground truth for the sample receipts, read off the images by eye. `null` means the total is not present in what Vision captured, so there is nothing to get right. `hard` marks a case we do not expect to pass and explains why, so a failure there is a known limit rather than a surprise. `date` is the document's own date; scoring reads it with today set to that date, as if photographed the same day, so the ±730-day sanity window does not mask the parser. `hard_date` marks a date we do not expect to get right, and says why.",
+ "7-11-110571160": {
+  "amount": 69.0,
+  "note": "Total ( 5 ) 69.00, under Sub Total 76.00",
+  "date": "2012-06-21"
+ },
+ "7-11-images": {
+  "amount": 381.0,
+  "note": "Total ( 129 ) 381.00, under Sub Total 389.00",
+  "date": "2013-07-26"
+ },
+ "7-11-images (1)": {
+  "amount": 299.0,
+  "note": "blurred; tendered 300.00 less change 1.00",
+  "date": "2025-03-14"
+ },
+ "7-11-o6wslkqmdJjElxi6SMp-o": {
+  "amount": 134.0,
+  "note": "Total ( 9 )",
+  "date": "2016-05-09"
+ },
+ "7-11-ocry4h3xsDvXLhR6EmN-o": {
+  "amount": 135.0,
+  "note": "Total ( 18 )",
+  "date": "2016-08-31"
+ },
+ "7-11-qbqilv33gw7jDOX8mPUk-o": {
+  "amount": 100.0,
+  "note": "ยอดสุทธิ 100.00, not the ยอดรวม 111.00 above it; thumb over the ย",
+  "date": "2020-06-11"
+ },
+ "7-11-r4wyii88gMnpSG1ILeo-o": {
+  "amount": 220.0,
+  "note": "ยอดรวม 220.00, no net line below",
+  "date": "2021-12-09"
+ },
+ "7-11-skd1cw1flcrk11pwar7sT-o": {
+  "amount": 70.0,
+  "note": "pre-order slip; ยอดสุทธิ 70.00, deposit and outstanding are not the price",
+  "date": "2024-08-29"
+ },
+ "mix-1128w-4zjUr74AdjM": {
+  "amount": 1300.0,
+  "note": "invoice template; ราคารวม 1,300.00; dated วันที่ 1 มกราคม 2025, due ครบกำหนด 1 กุมภาพันธ์ 2025 (only the signature-line dates are blank)",
+  "date": "2025-01-01"
+ },
+ "mix-1131w-B0MvtbDvMNk": {
+  "amount": 20000.0,
+  "note": "invoice template; จำนวนเงินรวมทั้งสิ้น 20,000.-",
+  "date": "2030-01-15"
+ },
+ "mix-1390071336-image-o": {
+  "amount": 514.0,
+  "note": "Grand Total",
+  "date": null,
+  "hard_date": "two dates disagree — '01-18-2014' and '11/01/14' — with nothing on the slip saying which is the purchase"
+ },
+ "mix-bc1dd2843de14e6bb900c7f51a6f2cf0": {
+  "amount": 25.0,
+  "note": "Tops Market; Total 25.00 after a 10.00 coupon",
+  "date": "2019-11-17"
+ },
+ "mix-images": {
+  "amount": 149.0,
+  "note": "รวมสุทธิ 149.00",
+  "date": "2017-12-30"
+ },
+ "mix-images (2)": {
+  "amount": 100.0,
+  "note": "Total 100",
+  "date": "2015-03-23"
+ },
+ "mix-o42ujc224YmoWbaTpgj-o": {
+  "amount": 2710.0,
+  "hard": "handwritten delivery order; Vision splits the figure into 'Total 2,7 10', so the digits are gone before the parser sees them",
+  "date": "2016-03-15"
+ },
+ "mix-pdm0lf21u2P9E6uhwi-o": {
+  "amount": 134.0,
+  "note": "Central Food Hall; Total 134.00",
+  "date": "2018-08-17"
+ },
+ "mix-qh039tkmjJIOqS68sGT-o": {
+  "amount": null,
+  "note": "online order note; the photo is cropped above the total, so nothing to find",
+  "date": "2020-07-19",
+  "hard_date": "'20-07-19' is yy-mm-dd here, but dd-mm-yy is the Thai norm and both readings are valid dates"
+ },
+ "mix-word_workshop11": {
+  "amount": 650.0,
+  "note": "school receipt; รวม 650.00",
+  "date": "2016-07-13"
+ },
+ "mix-Examble_reciept": {
+  "amount": 1560.0,
+  "hard": "Chatchai Electronics; 1,475.00 goods + 85.00 shipping = 1,560.00, but Vision reads the grand-total label as a second 'ค่าจัดส่ง', so the true total line carries no keyword and the parser stops at the goods subtotal",
+  "date": "2023-01-07"
+ },
+ "mix-image-2": {
+  "amount": 1140.0,
+  "note": "ราคารวมภาษีมูลค่าเพิ่ม 1140.00 = 600.00 goods + 540.00 shipping; the plain 'รวม 600.00' above it is the subtotal",
+  "date": "2021-10-29"
+ },
+ "mix-images (1)": {
+  "amount": 2030.0,
+  "note": "hospital receipt; รวมทั้งสิ้น 2,030.00, confirmed in words by สองพันสามสิบบาทถ้วน",
+  "date": "2021-04-25",
+  "hard_date": "Vision drops the separators: the date prints as '25 4 2564', and accepting bare number triples would match quantities all over a hospital bill"
+ },
+ "mix-images (3)": {
+  "amount": null,
+  "note": "TSD dividend and withholding-tax advice, not a purchase receipt; there is no amount paid to record",
+  "date": "2025-09-05"
+ },
+ "mix-images (4)": {
+  "amount": 935.0,
+  "note": "veterinary clinic; ยอดรวม 9 รายการ 935.00",
+  "date": "2026-09-12"
+ },
+ "mix-oYBQAniCJr3E9lFtZsIAN1EQpLgf6NeWAClEcD~tplv-sdweummd6v-text-logo-v1_QG1pZnRhaDY2MDE=_q75": {
+  "amount": 5918.0,
+  "note": "Kasemrad hospital; 5,918.00 settled by bank transfer, itemised above with a 0.00 discount",
+  "date": "2025-01-26"
+ }
+}

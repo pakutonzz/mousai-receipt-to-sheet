@@ -1,0 +1,695 @@
+{% extends "base.html" %}
+{% block body %}
+{% set ns = namespace(recent=false, book="") %}
+{% for g in groups %}{% for p in g.pages %}{% if p.name == selected_page and p.remembered %}{% set ns.recent = true %}{% endif %}{% endfor %}{% endfor %}
+{% for w in workbooks %}{% if w.id == workbook_id %}{% set ns.book = w.title %}{% endif %}{% endfor %}
+
+<form id="entry" method="post" action="/confirm" class="stack">
+
+{% if saved %}
+<div class="toast" id="saved" role="status">
+  <div class="toast-icon" aria-hidden="true">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+  </div>
+  <div class="toast-text">
+    <strong>บันทึกแล้ว</strong>
+    <span>{{ saved.page }} · แถว {{ saved.row }}</span>
+    <a href="https://docs.google.com/spreadsheets/d/{{ workbook_id }}/edit" target="_blank" rel="noopener">
+      เปิดไฟล์ใน Google Sheets
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/></svg>
+    </a>
+  </div>
+  <button type="button" class="icon-btn" id="saved-close" aria-label="ปิดข้อความ">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+  </button>
+</div>
+{% endif %}
+
+{% if message %}
+<div class="callout warn" id="message" role="alert">
+  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
+  <span>{{ message }}</span>
+</div>
+{% endif %}
+
+<section class="card dest" aria-label="บันทึกลง">
+  <div class="picker">
+    <div class="picker-face" aria-hidden="true">
+      <span class="picker-text">
+        <span class="eyebrow">บันทึกลงหน้า</span>
+        <span class="picker-main">
+          <span class="page-name" id="page-name">{{ selected_page }}</span>
+          <span class="pill" id="page-recent"{% if not ns.recent %} hidden{% endif %}>ใช้ล่าสุด</span>
+        </span>
+      </span>
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    </div>
+    <select id="page" name="page" aria-label="หน้าที่จะบันทึก" required>
+      {% for g in groups %}
+      <optgroup label="{{ g.fund }}">
+        {% for p in g.pages %}
+        <option value="{{ p.name }}"{% if p.name == selected_page %} selected{% endif %}{% if p.remembered %} data-remembered="1"{% endif %}>{{ p.name }}{% if p.remembered %} · ใช้ล่าสุด{% endif %}</option>
+        {% endfor %}
+      </optgroup>
+      {% endfor %}
+    </select>
+  </div>
+  <div class="divider"></div>
+  <div class="picker picker-book">
+    <div class="picker-face" aria-hidden="true">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 0 2 2h4"/><path d="M8 13h2"/><path d="M14 13h2"/><path d="M8 17h2"/><path d="M14 17h2"/></svg>
+      <span class="picker-text" id="book-name">{{ ns.book }}</span>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>
+    </div>
+    <select id="workbook_id" name="workbook_id" aria-label="ไฟล์">
+      {% for w in workbooks %}<option value="{{ w.id }}"{% if w.id == workbook_id %} selected{% endif %}>{{ w.title }}</option>{% endfor %}
+    </select>
+  </div>
+  <div class="stats">
+    <div class="stat"><div class="stat-label">แถวถัดไป</div><div class="stat-value" id="s-row">–</div></div>
+    <div class="stat"><div class="stat-label">คงเหลือ</div><div class="stat-value" id="s-balance">–</div></div>
+    <div class="stat"><div class="stat-label">ที่ว่าง</div><div class="stat-value" id="s-free">–</div></div>
+  </div>
+</section>
+
+{% if ocr_name == "none" %}
+<section class="receipt-empty" aria-label="ใบเสร็จ">
+  <div class="receipt-icon" aria-hidden="true">
+    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6"/><path d="M16 12H8"/><path d="M13 16H8"/></svg>
+  </div>
+  <p>ยังไม่ได้เปิดระบบอ่านใบเสร็จ กรอกข้อมูลเองด้านล่างได้เลย</p>
+</section>
+{% else %}
+<section aria-label="ใบเสร็จ">
+  <div class="receipt-empty" id="receipt-empty">
+    <div class="receipt-icon" aria-hidden="true">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+    </div>
+    <h2>ถ่ายรูปใบเสร็จ</h2>
+    <p>ระบบจะอ่านยอดเงินและวันที่ให้ แล้วให้ตรวจสอบก่อนบันทึกเสมอ</p>
+    <div class="receipt-actions">
+      <button type="button" class="btn btn-primary" id="take-photo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+        เปิดกล้อง
+      </button>
+      <button type="button" class="btn btn-secondary" id="pick-photo">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+        เลือกรูป
+      </button>
+    </div>
+    <div class="sub">ไม่มีใบเสร็จ? กรอกเองด้านล่างได้เลย</div>
+  </div>
+
+  <div class="card receipt-read" id="receipt-read" hidden>
+    <div class="photo-wrap">
+      <img id="receipt-photo" class="receipt-photo" alt="รูปใบเสร็จที่เลือก">
+      <span class="photo-pill busy" id="ocr-pill" role="status">
+        <svg id="pill-busy" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+        <svg id="pill-ok" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/></svg>
+        <svg id="pill-warn" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" hidden><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+        <span id="ocr-pill-text">กำลังอ่านใบเสร็จ…</span>
+      </span>
+      <button type="button" class="photo-expand" id="photo-expand" aria-label="ดูรูปใบเสร็จเต็ม">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"/><path d="M9 21H3v-6"/><path d="M21 3l-7 7"/><path d="M3 21l7-7"/></svg>
+      </button>
+    </div>
+    <div class="receipt-row">
+      <div class="hint">ช่องที่มีป้าย “จากใบเสร็จ” คือค่าที่อ่านได้ ตรวจสอบกับรูปก่อนบันทึก</div>
+      <button type="button" class="btn btn-secondary btn-sm" id="retake">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+        ถ่ายใหม่
+      </button>
+    </div>
+    <ul class="notes" id="reading-notes" hidden></ul>
+  </div>
+
+  {# No name attribute: a photo goes to /api/read on its own and is never posted with Confirm. #}
+  <input type="file" id="receipt-camera" class="sr-only" accept="image/*" capture="environment" tabindex="-1" aria-hidden="true">
+  <input type="file" id="receipt-gallery" class="sr-only" accept="image/*" tabindex="-1" aria-hidden="true">
+</section>
+{% endif %}
+
+<section class="card amount-card field" data-field="amount">
+  <div class="field-head">
+    <label for="amount">จำนวนเงิน</label>
+    <span class="tag" data-tag-for="amount" hidden>
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6"/><path d="M16 12H8"/></svg>
+      จากใบเสร็จ
+    </span>
+  </div>
+  <div class="amount-line">
+    <span class="currency" aria-hidden="true">฿</span>
+    <input id="amount" name="amount" class="amount-input" type="text" inputmode="decimal" autocomplete="off"
+           value="{{ amount or '' }}" placeholder="0.00">
+  </div>
+</section>
+
+<section class="card pad fields">
+  <div class="field" data-field="entry_date">
+    <div class="field-head">
+      <label for="entry_date">วันที่</label>
+      <span class="tag" data-tag-for="entry_date" hidden>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6"/><path d="M16 12H8"/></svg>
+        จากใบเสร็จ
+      </span>
+    </div>
+    <input type="date" id="entry_date" name="entry_date" class="input" value="{{ entry_date or '' }}">
+    <div class="hint">
+      {% if ocr_name == "none" %}เว้นว่างไว้ = วันนี้{% else %}เว้นว่างไว้ ระบบจะใช้วันที่บนใบเสร็จ ถ้าอ่านไม่ได้จะใช้วันนี้{% endif %}
+    </div>
+  </div>
+
+  <div class="field" data-field="description">
+    <label for="description">รายละเอียด</label>
+    <input type="text" id="description" name="description" class="input" value="{{ description or '' }}"
+           placeholder="เช่น ค่าขนมปังรับรองลูกค้า">
+  </div>
+
+  <fieldset>
+    <legend>ผู้เบิก</legend>
+    <div class="chips" id="requesters">
+      <label class="chip"><input type="radio" name="requester" value="-"{% if requester in ("-", "", None) %} checked{% endif %}><span>-</span></label>
+      {% for r in requesters %}
+      <label class="chip"><input type="radio" name="requester" value="{{ r }}"{% if r == requester %} checked{% endif %}><span>{{ r }}</span></label>
+      {% endfor %}
+      <label class="chip chip-add"><input type="radio" name="requester" value="{{ other }}"><span>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+        พิมพ์ชื่อเอง</span></label>
+    </div>
+    <input type="text" id="requester_other" name="requester_other" class="input" value=""
+           placeholder="พิมพ์ชื่อผู้เบิก" aria-label="ชื่อผู้เบิก" hidden>
+  </fieldset>
+
+  <div class="field" data-field="note">
+    <label for="note">หมายเหตุ</label>
+    <input type="text" id="note" name="note" class="input" value="{{ note or '' }}" placeholder="ไม่บังคับ">
+  </div>
+</section>
+
+<input type="hidden" name="key" id="key" value="">
+
+<noscript>
+  <div class="callout warn">หน้านี้ต้องเปิด JavaScript จึงจะตรวจสอบและบันทึกได้</div>
+</noscript>
+<div class="foot" style="margin-top: 0">{{ workbooks|length }} ไฟล์ · OCR: {{ ocr_name }}</div>
+
+<div class="actionbar">
+  <div class="bar-status" id="bar-status" role="status">
+    <svg id="bar-spinner" class="spin" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>
+    <span id="bar-status-text">กำลังคำนวณ…</span>
+  </div>
+  <div class="bar-summary" id="bar-summary" hidden>
+    <span id="bar-where"></span>
+    <span class="bar-balance num" id="bar-balance"></span>
+  </div>
+  <div class="callout danger" id="bar-error" role="alert" hidden>
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+    <span id="bar-error-text"></span>
+  </div>
+  <button type="button" class="btn btn-primary" id="review" disabled>
+    ตรวจสอบก่อนบันทึก
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+  </button>
+</div>
+
+{# The only way to write. It opens on a preview that matches the fields, and
+   while it is open the page behind it cannot be edited. #}
+<dialog id="review-dialog" class="sheet" aria-labelledby="review-title">
+  <div class="sheet-body">
+    <div class="grabber" aria-hidden="true"></div>
+    <div class="sheet-head">
+      <h2 id="review-title">ตรวจสอบก่อนบันทึก</h2>
+      {# Focus starts here, not on Confirm: a stray Enter closes rather than
+         writes, and focusing the top keeps the sheet from opening scrolled. #}
+      <button type="button" class="icon-btn" id="review-close" aria-label="ปิด" autofocus>
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="sub sheet-where" id="r-where"></div>
+
+    <div class="hero">
+      <button type="button" class="hero-thumb" id="r-thumb" aria-label="ดูรูปใบเสร็จ" hidden>
+        <img id="r-thumb-img" alt="">
+      </button>
+      <div class="hero-text">
+        <span class="eyebrow">ยอดจ่าย</span>
+        <span class="hero-amount" id="r-amount"></span>
+        <span class="hero-flow">
+          <span class="eyebrow">คงเหลือ</span>
+          <span id="r-previous"></span>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          <span id="r-balance"></span>
+        </span>
+      </div>
+    </div>
+    <img id="r-photo" class="sheet-photo" alt="รูปใบเสร็จที่เลือก" hidden>
+
+    <div class="sub" id="r-same-day" hidden>วันเดียวกับแถวบน ช่องวันที่จะเว้นว่างไว้</div>
+    <div class="stack" id="r-warnings" style="gap: 8px"></div>
+
+    <div class="section-label">เซลล์ที่จะเขียน</div>
+    <div class="cells" id="r-cells"></div>
+
+    <label class="switch-row">
+      <span>จำหน้านี้ไว้สำหรับ <strong id="remember-fund"></strong></span>
+      <input type="checkbox" class="switch" role="switch" name="remember" value="1" checked>
+    </label>
+
+    <div class="sheet-actions">
+      <button type="submit" class="btn btn-primary" id="confirm">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.25" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+        <span id="confirm-label">ยืนยันบันทึก</span>
+      </button>
+      <button type="button" class="btn btn-secondary" id="review-back">กลับไปแก้ไข</button>
+    </div>
+  </div>
+</dialog>
+</form>
+
+<template id="icon-danger"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="10"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg></template>
+<template id="icon-warn"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg></template>
+
+<script>
+(function () {
+  var other = "{{ other }}";
+  function $(id) { return document.getElementById(id); }
+
+  var form = $("entry");
+  var review = $("review");
+  var dialog = $("review-dialog");
+  var confirmButton = $("confirm");
+  var back = $("review-back");
+  var key = $("key");
+  var pageSelect = $("page");
+  var bookSelect = $("workbook_id");
+
+  // Every edit bumps `version`. The review popup only opens when the latest
+  // preview came from the current version and no photo is still being read
+  // into the fields. The server checks the same thing independently: Confirm
+  // posts the key of the preview it saw, and a mismatch writes nothing.
+  var version = 0;
+  var shownVersion = -1;
+  var reading = 0;
+  var timer = null;
+  var latest = null;
+  var photoUrl = null;
+
+  function money(n) {
+    return Number(n).toLocaleString("en-US", {
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+  }
+
+  // A session that ran out mid-entry: go and get the passcode rather than
+  // showing "sign in first" in a bar the user cannot act on.
+  function json(response) {
+    if (response.status === 401) {
+      window.location.href = "/login";
+      return new Promise(function () {});
+    }
+    return response.json();
+  }
+
+  function sync() {
+    var ready = reading === 0 && shownVersion === version && !!key.value;
+    review.disabled = !ready;
+    if (!ready && dialog.open) dialog.close();
+  }
+
+  // -- the bar at the bottom ----------------------------------------------
+
+  function bar(mode, text) {
+    $("bar-status").hidden = mode !== "busy" && mode !== "idle";
+    $("bar-spinner").hidden = mode !== "busy";
+    $("bar-status-text").textContent = mode === "busy" ? "กำลังคำนวณ…" : (text || "");
+    $("bar-summary").hidden = mode !== "ready";
+    $("bar-error").hidden = mode !== "error";
+    if (mode === "error") $("bar-error-text").textContent = text;
+  }
+
+  function stats(row, balance, free) {
+    $("s-row").textContent = row;
+    $("s-balance").textContent = balance == null ? "–" : money(balance);
+    $("s-balance").classList.toggle("negative", balance != null && balance < 0);
+    $("s-free").textContent = free == null ? "–" : free + " แถว";
+  }
+
+  function changed(delay) {
+    version += 1;
+    key.value = "";
+    latest = null;
+    sync();
+    bar("busy");
+    clearTimeout(timer);
+    timer = setTimeout(preview, delay == null ? 400 : delay);
+  }
+
+  function preview() {
+    var mine = version;
+    var body = new FormData(form);
+    body.delete("key");
+    body.delete("remember");
+    fetch("/api/preview", { method: "POST", body: body })
+      .then(json)
+      .then(function (data) {
+        if (mine !== version) return;
+        show(data);
+        shownVersion = mine;
+        sync();
+      })
+      .catch(function () {
+        if (mine !== version) return;
+        showError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองแก้ข้อมูลอีกครั้ง หรือรีเฟรชหน้า");
+      });
+  }
+
+  function show(data) {
+    if (data.error) { showError(data.error); return; }
+    stats(data.row, data.previous_balance, data.free_rows);
+    key.value = data.ready ? data.key : "";
+    latest = data.ready ? data : null;
+    if (data.ready) {
+      $("bar-where").textContent = "แถว " + data.row + " · คงเหลือใหม่";
+      $("bar-balance").textContent = money(data.balance);
+      $("bar-balance").classList.toggle("negative", data.balance < 0);
+      bar("ready");
+    } else {
+      bar("idle", data.message);
+    }
+  }
+
+  // Errors, such as a full Page, say why the button is disabled, so they sit
+  // right above it.
+  function showError(text) {
+    stats("–", null, null);
+    key.value = "";
+    latest = null;
+    bar("error", text);
+    sync();
+  }
+
+  // -- the review popup ---------------------------------------------------
+
+  function callout(level, text) {
+    var box = document.createElement("div");
+    box.className = "callout " + (level === "danger" ? "danger" : "warn");
+    box.appendChild(document.importNode($(level === "danger" ? "icon-danger" : "icon-warn").content, true));
+    var words = document.createElement("span");
+    words.textContent = text;
+    box.appendChild(words);
+    return box;
+  }
+
+  function cellRow(cell, negative) {
+    var row = document.createElement("div");
+    row.className = "cell-row";
+    var ref = document.createElement("span");
+    ref.className = "ref";
+    ref.textContent = cell.ref;
+    var label = document.createElement("span");
+    label.className = "cell-label";
+    label.textContent = cell.label;
+    if (cell.formula) {
+      var formula = document.createElement("span");
+      formula.className = "formula";
+      formula.textContent = "สูตร " + cell.formula;
+      label.appendChild(formula);
+    }
+    var value = document.createElement("span");
+    value.className = "cell-value";
+    value.textContent = cell.value;
+    if (cell.formula && negative) value.classList.add("negative");
+    row.appendChild(ref);
+    row.appendChild(label);
+    row.appendChild(value);
+    return row;
+  }
+
+  // A snapshot of the preview that is current right now. Nothing behind the
+  // popup can change while it is open, so it cannot go stale under the user.
+  function openReview() {
+    if (review.disabled || !latest) return;
+    var data = latest;
+    $("r-where").textContent =
+      bookSelect.options[bookSelect.selectedIndex].text + " · " + data.page +
+      " · แถว " + data.row + " · หลังบันทึกเหลือที่ว่าง " + data.rows_remaining + " แถว";
+    $("r-amount").textContent = "฿" + money(data.amount);
+    $("r-previous").textContent = money(data.previous_balance);
+    $("r-balance").textContent = money(data.balance);
+    $("r-balance").classList.toggle("negative", data.balance < 0);
+    $("r-thumb").hidden = !photoUrl;
+    $("r-photo").hidden = true;
+    if (photoUrl) {
+      $("r-thumb-img").src = photoUrl;
+      $("r-photo").src = photoUrl;
+    }
+    $("r-same-day").hidden = data.write_date;
+    var warnings = $("r-warnings");
+    warnings.innerHTML = "";
+    data.warnings.forEach(function (w) { warnings.appendChild(callout(w.level, w.text)); });
+    warnings.hidden = data.warnings.length === 0;
+    var cells = $("r-cells");
+    cells.innerHTML = "";
+    data.cells.forEach(function (c) { cells.appendChild(cellRow(c, data.balance < 0)); });
+    $("remember-fund").textContent = data.fund;
+    $("confirm-label").textContent = "ยืนยันบันทึก";
+    confirmButton.disabled = false;
+    back.disabled = false;
+    dialog.showModal();
+    dialog.scrollTop = 0;
+  }
+
+  review.addEventListener("click", openReview);
+  back.addEventListener("click", function () { dialog.close(); });
+  $("review-close").addEventListener("click", function () { dialog.close(); });
+  $("r-thumb").addEventListener("click", function () { $("r-photo").hidden = !$("r-photo").hidden; });
+  // A tap on the dimmed backdrop lands on the dialog element itself; a tap on
+  // its contents lands on .sheet-body or deeper.
+  dialog.addEventListener("click", function (event) {
+    if (event.target === dialog) dialog.close();
+  });
+
+  // -- the fields ---------------------------------------------------------
+
+  function markSource(field, source) {
+    field.dataset.source = source;
+    var box = field.closest("[data-field]");
+    if (box) box.classList.toggle("from-ocr", source === "ocr");
+    var tag = document.querySelector('[data-tag-for="' + field.id + '"]');
+    if (tag) tag.hidden = source !== "ocr";
+  }
+
+  // What the user typed always wins over the receipt, but a value that came
+  // from an earlier photo gives way to the next one.
+  function suggest(field, value) {
+    if (field.dataset.source === "user" && field.value !== "") return;
+    field.value = value;
+    markSource(field, value ? "ocr" : "");
+  }
+
+  ["entry_date", "description", "amount", "note", "requester_other"].forEach(function (id) {
+    var field = $(id);
+    if (field.value) field.dataset.source = "user";
+    function edited() {
+      markSource(field, field.value ? "user" : "");
+      changed();
+    }
+    field.addEventListener("input", edited);
+    // Some mobile date pickers only fire "change".
+    if (field.type === "date") field.addEventListener("change", edited);
+    // Enter (or "Go" on a phone keyboard) must never do anything by itself.
+    field.addEventListener("keydown", function (event) {
+      if (event.key === "Enter") { event.preventDefault(); field.blur(); }
+    });
+  });
+
+  var typed = $("requester_other");
+  function chosenRequester() {
+    var picked = form.querySelector('input[name="requester"]:checked');
+    return picked ? picked.value : "-";
+  }
+  function syncRequester(focus) {
+    var manual = chosenRequester() === other;
+    typed.hidden = !manual;
+    if (manual && focus) typed.focus();
+  }
+  $("requesters").addEventListener("change", function () { syncRequester(true); changed(0); });
+  syncRequester(false);
+
+  function chip(value, text) {
+    var label = document.createElement("label");
+    label.className = "chip";
+    var input = document.createElement("input");
+    input.type = "radio";
+    input.name = "requester";
+    input.value = value;
+    var face = document.createElement("span");
+    face.textContent = text;
+    label.appendChild(input);
+    label.appendChild(face);
+    return label;
+  }
+
+  function rebuildRequesters(names) {
+    var current = chosenRequester();
+    var box = $("requesters");
+    var add = box.querySelector(".chip-add");
+    box.innerHTML = "";
+    box.appendChild(chip("-", "-"));
+    names.forEach(function (name) { box.appendChild(chip(name, name)); });
+    box.appendChild(add);
+    var inputs = box.querySelectorAll('input[name="requester"]');
+    var keep = inputs[0];
+    for (var i = 0; i < inputs.length; i++) {
+      if (inputs[i].value === current) keep = inputs[i];
+    }
+    keep.checked = true;
+    syncRequester(false);
+  }
+
+  function syncFaces() {
+    var page = pageSelect.options[pageSelect.selectedIndex];
+    $("page-name").textContent = page ? page.value : "–";
+    $("page-recent").hidden = !(page && page.dataset.remembered === "1");
+    var book = bookSelect.options[bookSelect.selectedIndex];
+    $("book-name").textContent = book ? book.text : "";
+  }
+
+  pageSelect.addEventListener("change", function () { syncFaces(); changed(0); });
+
+  bookSelect.addEventListener("change", function () {
+    syncFaces();
+    version += 1;
+    key.value = "";
+    latest = null;
+    sync();
+    bar("busy");
+    fetch("/api/pages?workbook_id=" + encodeURIComponent(bookSelect.value))
+      .then(json)
+      .then(function (data) {
+        if (data.error) { showError(data.error); return; }
+        pageSelect.innerHTML = "";
+        data.groups.forEach(function (g) {
+          var group = document.createElement("optgroup");
+          group.label = g.fund;
+          g.pages.forEach(function (p) {
+            var option = document.createElement("option");
+            option.value = p.name;
+            option.textContent = p.name + (p.remembered ? " · ใช้ล่าสุด" : "");
+            if (p.remembered) {
+              option.dataset.remembered = "1";
+              option.selected = true;
+            }
+            group.appendChild(option);
+          });
+          pageSelect.appendChild(group);
+        });
+        rebuildRequesters(data.requesters);
+        syncFaces();
+        changed(0);
+      })
+      .catch(function () { showError("เชื่อมต่อเซิร์ฟเวอร์ไม่ได้ ลองใหม่อีกครั้ง"); });
+  });
+
+  // -- the receipt --------------------------------------------------------
+
+  var camera = $("receipt-camera");
+  var gallery = $("receipt-gallery");
+  var reads = 0;
+
+  function pill(state, text) {
+    $("ocr-pill").className = "photo-pill " + state;
+    $("pill-busy").hidden = state !== "busy";
+    $("pill-ok").hidden = state !== "ok";
+    $("pill-warn").hidden = state !== "warn";
+    $("ocr-pill-text").textContent = text;
+  }
+
+  function readPhoto(input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    photoUrl = URL.createObjectURL(file);
+    var photo = $("receipt-photo");
+    photo.src = photoUrl;
+    photo.classList.remove("expanded");
+    $("receipt-empty").hidden = true;
+    $("receipt-read").hidden = false;
+    var notes = $("reading-notes");
+    notes.innerHTML = "";
+    notes.hidden = true;
+    pill("busy", "กำลังอ่านใบเสร็จ…");
+
+    var mine = ++reads;
+    reading += 1;
+    sync();
+    var body = new FormData();
+    body.append("receipt", file);
+    input.value = "";
+    fetch("/api/read", { method: "POST", body: body })
+      .then(json)
+      .then(function (data) {
+        if (mine !== reads) return;
+        if (data.error) { pill("warn", data.error); return; }
+        suggest($("amount"), data.amount == null ? "" : Number(data.amount).toFixed(2));
+        suggest($("entry_date"), data.date || "");
+        suggest($("description"), data.description || "");
+        (data.notes || []).forEach(function (text) {
+          var item = document.createElement("li");
+          item.textContent = text;
+          notes.appendChild(item);
+        });
+        notes.hidden = notes.children.length === 0;
+        if (data.amount == null) pill("warn", "หายอดเงินไม่พบ กรอกเองได้เลย");
+        else pill("ok", "อ่านใบเสร็จแล้ว");
+      })
+      .catch(function () {
+        if (mine === reads) pill("warn", "อ่านใบเสร็จไม่ได้ในขณะนี้ กรอกเองได้เลย");
+      })
+      .then(function () {
+        reading -= 1;
+        changed(0);
+      });
+  }
+
+  if (camera) {
+    $("take-photo").addEventListener("click", function () { camera.click(); });
+    $("pick-photo").addEventListener("click", function () { gallery.click(); });
+    $("retake").addEventListener("click", function () { camera.click(); });
+    camera.addEventListener("change", function () { readPhoto(camera); });
+    gallery.addEventListener("change", function () { readPhoto(gallery); });
+    $("photo-expand").addEventListener("click", function () {
+      var big = $("receipt-photo").classList.toggle("expanded");
+      $("photo-expand").setAttribute("aria-label", big ? "ย่อรูปใบเสร็จ" : "ดูรูปใบเสร็จเต็ม");
+    });
+  }
+
+  // -- saving -------------------------------------------------------------
+
+  // Writing happens only from inside the popup, never from the page itself.
+  form.addEventListener("submit", function (event) {
+    if (!dialog.open || !key.value || confirmButton.disabled) {
+      event.preventDefault();
+      return;
+    }
+    $("confirm-label").textContent = "กำลังบันทึก…";
+    setTimeout(function () { confirmButton.disabled = true; back.disabled = true; }, 0);
+  });
+
+  // Coming Back to this page from the browser's history restores it exactly as
+  // it was, popup and all, including a save that has since happened. Start the
+  // check over rather than offer a stale popup.
+  window.addEventListener("pageshow", function (event) {
+    if (!event.persisted) return;
+    if (dialog.open) dialog.close();
+    changed(0);
+  });
+
+  var toast = $("saved");
+  if (toast) $("saved-close").addEventListener("click", function () { toast.hidden = true; });
+
+  syncFaces();
+  changed(0);
+})();
+</script>
+{% endblock %}

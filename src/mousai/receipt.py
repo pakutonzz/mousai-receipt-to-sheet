@@ -1,0 +1,458 @@
+"""Pull an amount, a date and a description out of receipt text.
+
+Everything here is pure: text in, a reading out. OCR quality varies wildly and
+Thai receipts are inconsistent, so this never pretends to be authoritative — the
+whole point of the preview screen is that a human corrects it before anything is
+written. A reading carries `notes` explaining how each field was decided, so the
+person checking can see why the machine thinks what it thinks.
+"""
+
+from __future__ import annotations
+
+import datetime as dt
+import difflib
+import re
+from dataclasses import dataclass, field
+
+from .messages import Notice
+
+# A keyword shorter than this is matched exactly. Fuzzy-matching "รวม" against
+# three-character windows would fire on half a receipt.
+FUZZY_MIN_LENGTH = 4
+FUZZY_THRESHOLD = 0.8
+
+# Thai digits appear on some printers.
+THAI_DIGITS = str.maketrans("๐๑๒๓๔๕๖๗๘๙", "0123456789")
+
+MONEY = re.compile(r"\d{1,3}(?:,\d{3})+(?:\.\d{1,2})?|\d+(?:\.\d{1,2})?")
+
+# Most specific first: a receipt often has several of these and the later,
+# more general ones ("รวม") also match subtotals.
+TOTAL_KEYWORDS = (
+    # Most specific first. A receipt often carries several of these and the
+    # later, more general ones also match subtotals and column headers.
+    "รวมทั้งสิ้น",
+    "ยอดสุทธิ",
+    "รวมสุทธิ",
+    "ยอดชำระ",
+    "ชำระโดย",
+    "จำนวนเงินรวม",
+    # "price including VAT" is the grand total, not the tax line. It has to
+    # outrank the plain "รวม" that also sits on the goods subtotal above it.
+    "รวมภาษีมูลค่าเพิ่ม",
+    "ราคารวมภาษี",
+    "grand total",
+    "net total",
+    "amount due",
+    "total",
+    "ยอดรวม",
+    "รวมเงิน",
+    "สุทธิ",
+    "รวม",
+)
+
+# Thai has no spaces, but Vision returns it word-segmented, so a line arrives as
+# "จำนวน เงิน รวม ทั้งสิ้น". Matching ignores spaces on both sides, otherwise
+# every multi-word keyword above silently never fires and the ranking is lost.
+def compact(text: str) -> str:
+    return text.replace(" ", "")
+
+
+# VAT is only "not the total" when it stands alone. "ราคารวมภาษีมูลค่าเพิ่ม" is
+# the grand total; "ภาษีมูลค่าเพิ่ม (7%) 91.00" is the tax on its own.
+VAT_MARKERS = ("vat", "ภาษี")
+INCLUSIVE = ("รวม", "total", "สุทธิ")
+
+# Lines that carry a number which is emphatically not the total.
+NOT_TOTAL = (
+    "เงินทอน",
+    "ทอน",
+    "รับเงิน",
+    "เงินสด",
+    "บัตร",
+    "change",
+    "cash",
+    "tender",
+    "ส่วนลด",
+    "discount",
+    "point",
+    "แต้ม",
+    # "Sub Total" contains "total", so without this a 7-Eleven slip returns the
+    # figure before discounts — 76.00 where the customer paid 69.00.
+    "sub total",
+    "subtotal",
+    "ยอดก่อน",
+    # A deposit or an outstanding balance on a pre-order slip is not the price.
+    "ค้าง",
+    "มัดจำ",
+    "มัดจา",
+    "deposit",
+    "balance",
+)
+
+THAI_MONTHS = {
+    "ม.ค": 1, "มกรา": 1, "ก.พ": 2, "กุมภา": 2, "มี.ค": 3, "มีนา": 3,
+    "เม.ย": 4, "เมษา": 4, "พ.ค": 5, "พฤษภา": 5, "มิ.ย": 6, "มิถุนา": 6,
+    "ก.ค": 7, "กรกฎา": 7, "ส.ค": 8, "สิงหา": 8, "ก.ย": 9, "กันยา": 9,
+    "ต.ค": 10, "ตุลา": 10, "พ.ย": 11, "พฤศจิกา": 11, "ธ.ค": 12, "ธันวา": 12,
+}
+
+DATE_PATTERNS = (
+    # ISO first, and anchored. Otherwise the day-first pattern below matches
+    # "23-01-07" *inside* "2023-01-07" and reads it as 23 January 2007.
+    re.compile(r"(?<!\d)(\d{4})-(\d{1,2})-(\d{1,2})(?!\d)"),
+    # Day first, the Thai norm. Two- or four-digit year.
+    re.compile(r"(?<!\d)(\d{1,2})[/-](\d{1,2})[/-](\d{2,4})(?!\d)"),
+    # Dots demand a four-digit year. Hospital bills itemise by code — "1.1.12",
+    # "1.1.14" — and those parse as perfectly plausible dates otherwise.
+    re.compile(r"(?<!\d)(\d{1,2})\.(\d{1,2})\.(\d{4})(?!\d)"),
+)
+
+# A date sitting right after one of these is the document's own date. Receipts
+# carry others — points expiry, a promotion end, a printed-at stamp — so when a
+# labelled one exists it wins over whichever happens to appear first.
+DATE_LABELS = ("วันที่", "วันที", "ว/ด/ป", "date")
+
+
+@dataclass
+class Reading:
+    """What OCR thinks the receipt says. Every field is a suggestion."""
+
+    amount: float | None = None
+    date: dt.date | None = None
+    description: str | None = None
+    # The shop name, when one is legible. Deliberately NOT offered as the
+    # description: a ledger line reads "ค่ากาแฟคุณหมอ", which is an editorial
+    # judgement about why money was spent. OCR cannot make that call, and
+    # pre-filling a branch name invites someone to accept it unedited.
+    shop: str | None = None
+    text: str = ""
+    notes: list[Notice] = field(default_factory=list)
+
+    @property
+    def empty(self) -> bool:
+        return self.amount is None and self.date is None and not self.description
+
+
+@dataclass(frozen=True)
+class Word:
+    """One word Vision found, with where it sits on the image."""
+
+    text: str
+    x0: float
+    y0: float
+    x1: float
+    y1: float
+
+    @property
+    def middle(self) -> float:
+        return (self.y0 + self.y1) / 2
+
+    @property
+    def height(self) -> float:
+        return abs(self.y1 - self.y0)
+
+
+def group_lines(words: list[Word]) -> list[str]:
+    """Rebuild lines from geometry rather than trusting Vision's reading order.
+
+    This is what pairs a label with the amount in the far-right column. Vision
+    serialises a receipt into `fullTextAnnotation.text` in an order that does not
+    reliably keep `ยอดรวม` and `111.00` on one line, because they are separated
+    by a wide gap. Grouping by vertical overlap puts them back together.
+    """
+    if not words:
+        return []
+    heights = sorted(w.height for w in words if w.height > 0)
+    tolerance = (heights[len(heights) // 2] if heights else 10) * 0.6
+
+    lines: list[list[Word]] = []
+    for word in sorted(words, key=lambda w: w.middle):
+        if lines and abs(word.middle - lines[-1][0].middle) <= tolerance:
+            lines[-1].append(word)
+        else:
+            lines.append([word])
+    return [
+        " ".join(w.text for w in sorted(line, key=lambda w: w.x0)) for line in lines
+    ]
+
+
+def _fuzzy_contains(line: str, keyword: str) -> bool:
+    """Does `line` contain something close enough to `keyword`?
+
+    OCR loses characters to thumbs, folds and glare — a real sample has a thumb
+    over the ย in ยอดรวม, leaving อดรวม, which no exact match will find.
+    """
+    if len(keyword) < FUZZY_MIN_LENGTH:
+        return False
+    span = len(keyword)
+    best = 0.0
+    for width in (span - 1, span, span + 1):
+        if width < 1:
+            continue
+        for start in range(0, max(len(line) - width + 1, 1)):
+            window = line[start : start + width]
+            if not window:
+                continue
+            best = max(best, difflib.SequenceMatcher(None, keyword, window).ratio())
+            if best >= FUZZY_THRESHOLD:
+                return True
+    return False
+
+
+# Vision reads a decimal point as a comma often enough to matter: a real sample
+# has "300,00" for 300.00. A comma before exactly two digits is a decimal — a
+# thousands separator is always followed by three.
+DECIMAL_COMMA = re.compile(r",(\d{2})(?!\d)")
+
+
+def normalise(text: str) -> str:
+    return DECIMAL_COMMA.sub(r".\1", text.translate(THAI_DIGITS).replace(" ", " "))
+
+
+def _money_on(line: str) -> list[float]:
+    out = []
+    for match in MONEY.finditer(line):
+        try:
+            out.append(float(match.group().replace(",", "")))
+        except ValueError:
+            continue
+    return out
+
+
+def _scan(lines: list[str], matches, loose: bool) -> tuple[float | None, Notice | None]:
+    """Walk the keywords in rank order, looking for one that owns an amount.
+
+    Rank matters: ยอดสุทธิ and TOTAL come before ยอดรวม, so on a receipt carrying
+    both a subtotal and a net the amount actually paid wins. That is the one the
+    petty-cash ledger wants.
+    """
+    for keyword in TOTAL_KEYWORDS:
+        wanted = compact(keyword)
+        for index, line in enumerate(lines):
+            compacted = compact(line.lower())
+            if _excluded(compacted):
+                continue
+            if not matches(compacted, wanted):
+                continue
+            amounts = _money_on(line)
+            if amounts:
+                code = "amount_from_keyword_loose" if loose else "amount_from_keyword"
+                return max(amounts), Notice(code, {"keyword": keyword})
+            # Some layouts put the figure on the following line. Only trust that
+            # when the next line is a lone amount: a column header like
+            # "ลำดับ รายการสินค้า ราคา/หน่วย ราคารวม" also carries a total keyword
+            # and no number, and the row under it is a line item, not the total.
+            if index + 1 < len(lines):
+                amounts = _money_on(lines[index + 1])
+                if len(amounts) == 1:
+                    return amounts[0], Notice(
+                        "amount_from_next_line", {"keyword": keyword}
+                    )
+    return None, None
+
+
+def _excluded(compacted: str) -> bool:
+    """Is this line carrying a number that is definitely not the total?"""
+    if any(bad in compacted for bad in (compact(b) for b in NOT_TOTAL)):
+        return True
+    if any(vat in compacted for vat in VAT_MARKERS):
+        return not any(good in compacted for good in INCLUSIVE)
+    return False
+
+
+CHANGE_MARKERS = ("เงินทอน", "ทอน", "change")
+
+
+def _from_change(lines: list[str]) -> tuple[float | None, Notice | None]:
+    """Recover the total from a cash-and-change line: paid = tendered - change."""
+    for line in lines:
+        if not any(marker in compact(line.lower()) for marker in CHANGE_MARKERS):
+            continue
+        amounts = _money_on(line)
+        if len(amounts) != 2:
+            continue
+        tendered, change = max(amounts), min(amounts)
+        if tendered > change:
+            return round(tendered - change, 2), Notice("amount_from_change")
+    return None, None
+
+
+def amount_from_lines(lines: list[str]) -> tuple[float | None, Notice]:
+    """Best guess at the total, and why.
+
+    Keyword lines win over everything, because the largest number on a receipt is
+    just as often a phone number, a tax id or a cash-tendered figure.
+    """
+    lines = [normalise(line).strip() for line in lines if line.strip()]
+
+    amount, why = _scan(lines, lambda line, keyword: keyword in line, loose=False)
+    if amount is not None:
+        return amount, why
+
+    # Nothing matched cleanly, so allow for OCR having mangled the keyword.
+    amount, why = _scan(lines, _fuzzy_contains, loose=True)
+    if amount is not None:
+        return amount, why
+
+    # Still nothing, so work it out from the money instead of the words. A
+    # 7-Eleven slip prints "เงินสด/เงินทอน 300.00 1.00" on one line, and what was
+    # paid is the difference. This rescues blurred receipts whose total label is
+    # unreadable, and is far safer than guessing at the largest number — on one
+    # real sample that guess returned the shop's branch number.
+    amount, why = _from_change(lines)
+    if amount is not None:
+        return amount, why
+
+    # Deliberately no "largest number" guess. Across 24 real receipts that
+    # fallback was never once right — it returned shop branch numbers, a receipt
+    # number and a figure off a securities advice note. A confident wrong amount
+    # is worse than a blank one here, because the preview exists to be checked
+    # and a plausible number is exactly what a tired person waves through.
+    return None, Notice("amount_not_found")
+
+
+def parse_amount(text: str) -> tuple[float | None, Notice]:
+    """The flat-text entry point, kept so the parser is testable without Vision."""
+    return amount_from_lines(normalise(text).splitlines())
+
+
+def _year(raw: int) -> int:
+    """Thai receipts mix Buddhist and Christian years, in two and four digits."""
+    if raw > 2400:
+        return raw - 543
+    if raw >= 1900:
+        return raw
+    if raw >= 50:  # two-digit Buddhist, e.g. 69 -> 2569 -> 2026
+        return 2500 + raw - 543
+    return 2000 + raw
+
+
+def parse_date(
+    text: str, today: dt.date | None = None
+) -> tuple[dt.date | None, Notice]:
+    """Day-first, which is how Thai receipts print and how the Workbook reads."""
+    body = normalise(text)
+    today = today or dt.date.today()
+
+    # A labelled date is the document's own. Look there first, so a points
+    # expiry or a promotion end date cannot win just by being printed higher up.
+    for window in _after_labels(body):
+        found, why = _first_date_in(window, today)
+        if found is not None:
+            return found, why
+
+    return _first_date_in(body, today)
+
+
+def _after_labels(body: str) -> list[str]:
+    """The stretch of text just after each date label, in document order."""
+    lowered = body.lower()
+    windows = []
+    for label in DATE_LABELS:
+        start = 0
+        while True:
+            at = lowered.find(label, start)
+            if at < 0:
+                break
+            windows.append(body[at : at + 40])
+            start = at + 1
+    return windows
+
+
+def _first_date_in(body: str, today: dt.date) -> tuple[dt.date | None, Notice]:
+    for pattern in DATE_PATTERNS:
+        for match in pattern.finditer(body):
+            groups = [int(g) for g in match.groups()]
+            if len(match.group(1)) == 4:
+                year, month, day = groups
+            else:
+                day, month, year = groups
+                year = _year(year)
+            if not (1 <= month <= 12 and 1 <= day <= 31):
+                continue
+            try:
+                found = dt.date(year, month, day)
+            except ValueError:
+                continue
+            if abs((found - today).days) > 730:
+                continue  # a warranty date or a printed year, not this purchase
+            return found, Notice("date_read", {"text": match.group()})
+
+    for name, month in THAI_MONTHS.items():
+        # The stem is an abbreviation; allow the rest of a spelled-out month so
+        # that "13 กรกฎาคม 2559" matches on the "กรกฎา" stem.
+        match = re.search(
+            rf"(\d{{1,2}})\s*{re.escape(name)}[฀-๿]*\.?\s*(\d{{2,4}})", body
+        )
+        if match:
+            day, year = int(match.group(1)), _year(int(match.group(2)))
+            try:
+                found = dt.date(year, month, day)
+            except ValueError:
+                continue
+            if abs((found - today).days) > 730:
+                continue
+            return found, Notice("date_read", {"text": match.group()})
+
+    return None, Notice("date_not_found")
+
+
+def parse_description(text: str) -> tuple[str | None, Notice]:
+    """The merchant line, usually near the top and rarely useful verbatim."""
+    for line in (line.strip() for line in normalise(text).splitlines()):
+        if len(line) < 3 or len(line) > 60:
+            continue
+        digits = sum(character.isdigit() for character in line)
+        if digits > len(line) / 3:
+            continue
+        # OCR noise is mostly punctuation; a shop name has letters in it.
+        if sum(character.isalpha() for character in line) < 3:
+            continue
+        if any(bad in line.lower() for bad in NOT_TOTAL):
+            continue
+        return line, Notice("shop_seen", {"shop": line})
+    return None, Notice("shop_not_found")
+
+
+def read_layout(
+    words: list[Word], text: str = "", today: dt.date | None = None
+) -> Reading:
+    """Read from Vision's word boxes, falling back to its flat text.
+
+    Preferred over `read()` whenever bounding boxes are available, because lines
+    rebuilt from geometry keep a label and its right-column amount together.
+    """
+    lines = group_lines(words)
+    if not lines:
+        return read(text, today=today)
+
+    amount, why_amount = amount_from_lines(lines)
+    if amount is None:
+        # Vision's own line ordering occasionally succeeds where geometry does
+        # not, typically on narrow slips with no column at all.
+        amount, why_amount = parse_amount(text)
+
+    body = "\n".join(lines)
+    date, why_date = parse_date(body or text, today=today)
+    shop, why_shop = parse_description(body or text)
+    return Reading(
+        amount=amount,
+        date=date,
+        shop=shop,
+        text=text or body,
+        notes=[why_amount, why_date, why_shop],
+    )
+
+
+def read(text: str, today: dt.date | None = None) -> Reading:
+    amount, why_amount = parse_amount(text)
+    date, why_date = parse_date(text, today=today)
+    shop, why_shop = parse_description(text)
+    return Reading(
+        amount=amount,
+        date=date,
+        shop=shop,
+        text=text,
+        notes=[why_amount, why_date, why_shop],
+    )
