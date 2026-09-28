@@ -18,11 +18,12 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 def main() -> int:
-    from mousai import people
+    from mousai import describe, ocr, people, store
     from mousai.bot.core import Bot
     from mousai.bot.polling import run
     from mousai.messages import english
-    from mousai.sheets import load_env
+    from mousai.review import Desk
+    from mousai.sheets import Sheets, load_env
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     # The HTTP client logs every long-poll request at INFO, which buries the
@@ -49,9 +50,32 @@ def main() -> int:
     print(f"  keepers       {sum(p.is_keeper for p in everyone)}")
     print(f"  recorders     {sum(p.may_hand_in and not p.is_keeper for p in everyone)}")
     print(f"  operators     {sum(p.is_operator for p in everyone)}")
+
+    # Sheets is opened on first use, so a missing credential shows up as a
+    # Thai reply to whoever sent a receipt, not as a bot that will not start.
+    sheets: list[Sheets] = []
+
+    def get_sheets() -> Sheets:
+        if not sheets:
+            sheets.append(Sheets.from_env())
+        return sheets[0]
+
+    reader = ocr.detect(env)
+    describer = describe.detect(env)
+    store_path = store.path_from_env(env)
+    print(f"  store         {store_path}")
+    print(f"  ocr           {reader.name}")
+    print(f"  descriptions  {describer.name}")
     print()
 
-    run(token, Bot(people_file))
+    bot = Bot(
+        people_file,
+        desk=Desk(get_sheets),
+        store=store.Store(store_path),
+        reader=reader,
+        describer=describer,
+    )
+    run(token, bot)
     return 0
 
 

@@ -242,6 +242,11 @@ class Desk:
         if workbook_id not in {book.id for book in self.workbooks()}:
             raise SheetsError(Notice("unknown_workbook"))
 
+    def workbook(self, workbook_id: str):
+        """An accepted Workbook, for reading its Pages, Active Pages and names."""
+        self.check_workbook(workbook_id)
+        return self._sheets().open(workbook_id)
+
     @staticmethod
     def template_for(page: str) -> Template:
         template = fund_for_page(page)

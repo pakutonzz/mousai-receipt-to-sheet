@@ -1,6 +1,6 @@
 # A Keeper hands in a receipt and confirms it
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 01, 02, 04, 07, 08
 
 The first complete path: a Keeper's own receipt, no Queue.
@@ -24,3 +24,17 @@ The first complete path: a Keeper's own receipt, no Queue.
 
 - Tests of the whole path against fakes, including stale, expired and cancelled.
 - On the Mac, against the scratch Workbook, a real photo becomes a real row.
+
+## Comments
+
+**2026-09-28, agent.** The code is done and tested against the real Desk and
+store with Sheets, Vision and the model faked (`tests/test_bot_review.py`):
+captioned photo straight to a Review; no caption asks with purpose buttons or
+typed text; no model draft asks for the Description; an unread amount is asked
+and checked; แก้ไข offers each field, typed answers redraw the Review in place,
+Page and Workbook are picked from buttons; confirm claims first so a double tap
+writes once; a stale key redraws a fresh Review and writes nothing; cancel and
+the 24-hour expiry refuse the buttons; someone else's buttons do nothing.
+A Recorder's Review has no confirm button yet (ticket 10 adds hand-in).
+Typed free-form corrections are ticket 05. Left: the live check on the Mac,
+a real photo becoming a real row in the scratch Workbook.

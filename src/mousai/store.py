@@ -129,8 +129,10 @@ class Store:
     def __init__(self, path: Path | str, clock=time.time):
         self._clock = clock
         # One process, one connection. Autocommit, with explicit transactions
-        # where two statements must land together.
-        self._db = sqlite3.connect(str(path), isolation_level=None)
+        # where two statements must land together. The bot handles one update
+        # at a time but on whichever worker thread is free, so the connection
+        # is shared across threads, never used by two at once.
+        self._db = sqlite3.connect(str(path), isolation_level=None, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         self._db.executescript(SCHEMA)

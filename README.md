@@ -64,8 +64,17 @@ python scripts/serve.py
 
 ### 5. คำสั่ง start Telegram bot
 
-🚧 **กำลังพัฒนา (in progress)** ยังไม่มีโค้ดของ bot และยังไม่มีคำสั่ง start
-ใน `.env.example` เตรียมช่อง `TELEGRAM_BOT_TOKEN` ไว้แล้ว (ตอนนี้ยังไม่มีโค้ดส่วนไหนอ่านค่านี้)
+```
+python scripts/bot.py
+```
+
+ต้องมี `TELEGRAM_BOT_TOKEN` ใน `.env` (สร้าง bot กับ @BotFather) และไฟล์ `people.toml`
+(คัดลอกจาก `people.example.toml` แล้วใส่รหัส Telegram ของแต่ละคน) บน Mac mini bot รันเป็น
+service `com.mousai.bot` อยู่แล้ว ดูหัวข้อ "On the Mac mini" ด้านล่าง
+
+ผู้ดูแลสมุด (Keeper) ส่งรูปใบเสร็จ ใส่ข้อความใต้รูปว่าใช้เพื่ออะไร bot อ่านยอดเงินกับวันที่
+ร่างรายละเอียดด้วยโมเดลบนเครื่อง แล้วส่งหน้าตรวจสอบกลับมาพร้อมปุ่ม ยืนยันบันทึก · แก้ไข · ยกเลิก
+ไม่มีอะไรถูกเขียนลงชีตจนกว่าจะกดยืนยัน 🚧 คิวสำหรับผู้บันทึก (Recorder) ยังอยู่ระหว่างพัฒนา
 
 ### 6. โครงสร้าง Google Sheet / columns ที่ใช้
 
@@ -102,7 +111,6 @@ python scripts/serve.py
 **Long polling** — bot เป็นฝ่ายไปดึงข้อความจาก Telegram เอง จึงไม่มีพอร์ตไหนบน Mac mini
 ที่เปิดรับการเชื่อมต่อจากภายนอก ข้อความที่ส่งมาตอนเครื่องปิดจะรออยู่ที่ Telegram นานสุด 24 ชั่วโมง
 รายละเอียดทั้งหมดอยู่ใน [.scratch/telegram-bot/spec.md](.scratch/telegram-bot/spec.md)
-(🚧 ตัว bot ยังอยู่ระหว่างพัฒนา)
 
 ## Running it
 

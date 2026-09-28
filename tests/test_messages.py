@@ -19,7 +19,8 @@ sys.path.insert(0, str(ROOT / "src"))
 from mousai.messages import EN, PASSTHROUGH, TH, Notice, english, thai  # noqa: E402
 
 SOURCES = list((ROOT / "src" / "mousai").rglob("*.py")) + list((ROOT / "scripts").glob("*.py"))
-USED = re.compile(r'Notice\(\s*"([a-z_]+)"')
+# Notice("code") everywhere, and the bot renderer's say("code") shorthand.
+USED = re.compile(r"""(?:Notice|say)\(\s*["']([a-z_]+)["']""")
 
 
 class Coverage(unittest.TestCase):
