@@ -28,7 +28,7 @@ _Avoid_: Payer, employee, user
 ### The workbook
 
 **Workbook**:
-One month's spreadsheet, e.g. `เบิกจ่ายเงินสด สิงหาคม26`. It holds that month's Pages for every Fund plus the Ledger sheets, which carry history from earlier months. A new Workbook appears each month and the old one is closed; nothing links them but the opening Balance a person copies across.
+One month's spreadsheet, e.g. `เบิกจ่ายเงินสด สิงหาคม26`. It holds that month's Pages for every Fund plus the Ledger sheets, which carry history from earlier months. A new Workbook appears each month and the old one is closed: nothing new is written into it, not even a late receipt dated in its month. Nothing links them but the opening Balance a person copies across.
 
 **Page** (หน้า):
 One detail sheet, e.g. `เงินสดย่อย6`. A Page is one printable, signable form — a document head, a table of Entries, a totals line and a signature block — not a table that grows forever. A Fund's history is a series of Pages, each opening with the closing Balance of the one before.
@@ -42,6 +42,10 @@ The band of rows on a Page that Entries may occupy, bounded above by the column 
 
 **Entry** (รายการ):
 One row inside a Data region: one date, one sequence number, one description, one Top-up or Disbursement, and the resulting Balance.
+
+**Description** (รายละเอียด):
+What an Entry's money was spent on and why, e.g. ค่าขนมปังรับรองลูกค้า. The what is usually on the receipt; the why never is, and only the Requester or the Recorder knows it.
+_Avoid_: Detail, item, memo
 
 **Sequence number** (ลำดับ):
 An Entry's position *within its date*, not within the Page. It restarts at 1 on each new date, and the date itself is written only on the first Entry of that date.
@@ -62,13 +66,21 @@ A separate signed form declaring spends for which no receipt could be obtained. 
 ### The flow
 
 **Recorder** (ผู้บันทึก):
-A person the system knows by name and allows to record Transactions, each with a default Requester. The Recorder is who hands in the receipt; the Requester is who spent the money. Usually the same person, not always.
+A person the system knows by name and allows to hand in Transactions, each with a default Requester. The Recorder is who hands in the receipt; the Requester is who spent the money. Usually the same person, not always. A Recorder who is not a Keeper hands Transactions to the Queue.
 _Avoid_: User, staff, member, submitter
+
+**Keeper** (ผู้ดูแลสมุด):
+A person allowed to confirm Transactions into the Workbook, e.g. มน and the clinic's owner. Confirming a Review records the spend; it is not approving the reimbursement.
+_Avoid_: Admin, approver
+
+**Queue** (คิวรอตรวจ):
+Transactions handed in by Recorders who are not Keepers, waiting for a Keeper. A Transaction stays in the Queue until a Keeper confirms or rejects it, however long that takes; nothing in the Queue is in the Workbook yet.
+_Avoid_: Inbox, pending list
 
 **Review** (ตรวจสอบก่อนบันทึก):
 Exactly the cells a Transaction will write, shown before anything is written. Confirming writes those cells or nothing; if the Page has changed since, the Review is stale and has to be seen again.
 _Avoid_: Confirmation screen
 
 **Transaction**:
-One thing a person confirms after seeing its Review. Today a Transaction becomes exactly one Entry; it is expected to one day produce several, across more than one sheet.
+One thing a Keeper confirms after seeing its Review. Today a Transaction becomes exactly one Entry; it is expected to one day produce several, across more than one sheet.
 _Avoid_: Record, submission, receipt
