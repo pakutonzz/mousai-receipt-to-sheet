@@ -73,6 +73,8 @@ TH = {
     "people_duplicate_id": "telegram_id {id} ซ้ำกัน ในรายชื่อคนที่ {first} และ {second}",
     "people_no_keeper": "ต้องมีผู้ดูแลสมุด (keeper) อย่างน้อยหนึ่งคน",
     "people_no_operator": "ต้องมีผู้ดูแลระบบ (operator) อย่างน้อยหนึ่งคน",
+    "txn_missing": "ไม่พบรายการนี้แล้ว",
+    "txn_settled": "รายการนี้ดำเนินการไปแล้ว ({state})",
     "preview_stale": "ข้อมูลในหน้า {page} เปลี่ยนไประหว่างที่ตรวจสอบ (อาจมีคนบันทึกพร้อมกัน) ยังไม่ได้บันทึก กรุณาตรวจสอบเซลล์อีกครั้ง",
 }
 
@@ -127,6 +129,8 @@ EN = {
     "people_duplicate_id": "telegram_id {id} appears twice, for persons {first} and {second}",
     "people_no_keeper": "at least one person must be a keeper",
     "people_no_operator": "at least one person must be an operator",
+    "txn_missing": "that Transaction no longer exists",
+    "txn_settled": "that Transaction is already {state}",
     "preview_stale": "{page} changed while it was being checked (someone else may have written to it); nothing was written, check the cells again",
 }
 

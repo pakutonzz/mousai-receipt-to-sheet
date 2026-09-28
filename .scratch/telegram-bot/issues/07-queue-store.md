@@ -1,6 +1,6 @@
 # A local store for the Queue and the same-photo index
 
-Status: ready-for-agent
+Status: resolved
 
 Queued Transactions and the photos already recorded need to survive a restart
 of the bot. They live in a small database on the Mac, never in the Workbook:
