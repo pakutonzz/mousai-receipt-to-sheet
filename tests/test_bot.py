@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT / "src"))
 
 from mousai.bot.core import ASK_EVERY, Bot, Incoming  # noqa: E402
-from mousai.messages import Notice  # noqa: E402
+from mousai.messages import Notice, thai  # noqa: E402
 from mousai.people import parse  # noqa: E402
 
 MON, OWNER, HELPER, OPERATOR, STRANGER = 11, 22, 33, 44, 99
@@ -166,6 +166,8 @@ class FakeTelegram:
         self.markups: list = []
         self.photos: list[tuple[int, str, str]] = []
         self.captions: list[tuple[int, int, str]] = []
+        self.typing: list[int] = []
+        self.deleted: list[tuple[int, int]] = []
         self.next_id = 500
 
     async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
@@ -195,6 +197,12 @@ class FakeTelegram:
 
         self.captions.append((chat_id, message_id, caption))
         return SimpleNamespace(message_id=message_id)
+
+    async def send_chat_action(self, chat_id, action):
+        self.typing.append(chat_id)
+
+    async def delete_message(self, chat_id, message_id):
+        self.deleted.append((chat_id, message_id))
 
     async def edit_message_text(self, text, chat_id, message_id, parse_mode=None, reply_markup=None):
         from types import SimpleNamespace
@@ -401,6 +409,98 @@ class TelegramSide(unittest.TestCase):
 
         app = build("123456:TEST-TOKEN", Bot(FakePeopleFile()))
         self.assertTrue(app.handlers)
+
+
+class SlowCore:
+    """The core, taking its time: Vision and the model can take seconds."""
+
+    def __init__(self, replies, delay=0.0, fails=None):
+        self.replies = replies
+        self.delay = delay
+        self.fails = fails
+        self.remembered = []
+
+    def handle(self, incoming):
+        import time
+
+        time.sleep(self.delay)
+        if self.fails:
+            raise self.fails
+        return self.replies
+
+    def remember(self, *args):
+        self.remembered.append(args)
+
+    def failed(self, incoming, error):
+        from mousai.bot.core import Send
+
+        return [Send(incoming.chat_id, "nothing was saved")]
+
+
+@unittest.skipUnless(HAVE_TELEGRAM, "python-telegram-bot is not installed")
+class ShowingWork(unittest.TestCase):
+    """While the core works, the sender sees it is working."""
+
+    def respond(self, core, incoming, answer=None):
+        import asyncio
+
+        from mousai.bot.polling import respond
+
+        telegram = FakeTelegram()
+        asyncio.run(respond(telegram, core, incoming, answer=answer, patience=0.05))
+        return telegram
+
+    def test_a_quick_reply_needs_no_waiting_message(self):
+        from mousai.bot.core import Send
+
+        telegram = self.respond(SlowCore([Send(42, "answer")]), says(42, "120"))
+        self.assertEqual(telegram.sent, [(42, "answer")])
+        self.assertEqual(telegram.edited, [])
+
+    def test_a_slow_reply_takes_the_place_of_the_waiting_message(self):
+        from mousai.bot.core import Photo, Send
+
+        core = SlowCore([Send(42, "<b>review</b>", html=True, remember=1)], delay=0.3)
+        photo = Photo("f", "u", lambda: b"")
+        telegram = self.respond(core, says(42, None, photo=photo))
+        self.assertEqual(telegram.sent, [(42, thai(Notice("bot_working_photo")))])
+        # The answer is the waiting message, edited: one message, not two.
+        self.assertEqual(telegram.edited, [(42, 501, "<b>review</b>")])
+        self.assertEqual(core.remembered, [(1, 42, 501, "review")])
+        self.assertIn(42, telegram.typing)
+
+    def test_a_waiting_message_with_nothing_to_become_is_removed(self):
+        from mousai.bot.core import Send
+
+        core = SlowCore([Send(42, "redrawn", edit=9)], delay=0.3)
+        telegram = self.respond(core, says(42, "จำนวนเงินผิด 50"))
+        self.assertEqual(telegram.sent, [(42, thai(Notice("bot_working_text")))])
+        self.assertEqual(telegram.deleted, [(42, 501)])
+
+    def test_a_slow_button_says_so_in_its_answer(self):
+        import asyncio
+
+        answers = []
+
+        async def answer(text=None):
+            answers.append(text)
+
+        core = SlowCore([], delay=0.3)
+        self.respond(core, says(42, None, button="ok:1:k"), answer=answer)
+        self.assertEqual(answers, [thai(Notice("bot_working"))])
+        answers.clear()
+        self.respond(SlowCore([]), says(42, None, button="ok:1:k"), answer=answer)
+        self.assertEqual(answers, [None])
+
+    def test_a_failure_while_waiting_still_answers(self):
+        core = SlowCore([], delay=0.3, fails=RuntimeError("boom"))
+        with self.assertLogs("mousai.bot", level="ERROR"):
+            telegram = self.respond(core, says(42, "ค่าน้ำแข็ง 45"))
+        self.assertEqual(telegram.edited, [(42, 501, "nothing was saved")])
+
+    def test_groups_see_nothing(self):
+        telegram = self.respond(SlowCore([], delay=0.3), says(42, "hi", private=False))
+        self.assertEqual((telegram.sent, telegram.typing), ([], []))
 
 
 if __name__ == "__main__":
