@@ -23,12 +23,14 @@ from __future__ import annotations
 import datetime as dt
 import hashlib
 import json
+import re
 import time
 from dataclasses import dataclass
 from typing import Callable
 
 from .messages import Notice
 from .page import Formula, Page, PageError, Placement
+from .receipt import THAI_MONTHS, full_year
 from .sheets import Sheets, SheetsError, split_ref
 from .templates import Template, fund_for_page
 
@@ -65,6 +67,35 @@ DANGER = {"negative_balance"}
 
 def severity(notice: Notice) -> str:
     return "danger" if notice.code in DANGER else "warn"
+
+
+def workbook_month(title: str) -> dt.date | None:
+    """The month a Workbook covers, read from its name, as its first day.
+
+    `เบิกจ่ายเงินสด สิงหาคม26` is August 2026. The year may be Christian or
+    Buddhist, two digits or four, the same way receipts write it.
+    """
+    for stem, month in THAI_MONTHS.items():
+        match = re.search(rf"{re.escape(stem)}[฀-๿]*\.?\s*(\d{{4}}|\d{{2}})(?!\d)", title)
+        if match:
+            return dt.date(full_year(int(match.group(1))), month, 1)
+    return None
+
+
+def current_first(books: list) -> list:
+    """The folder's Workbooks, the current month's first.
+
+    Ordered by the month in the name, never by last-modified time: fixing a
+    cell in August's Workbook on 3 September must not make August the default
+    again, since last month's Workbook is closed. Names with no month keep
+    their order and go last, still there to pick by hand.
+    """
+
+    def by_month(book):
+        month = workbook_month(book.title)
+        return (month is None, -(month.toordinal() if month else 0))
+
+    return sorted(books, key=by_month)
 
 
 def cells_for_display(placement, template) -> list[dict]:
@@ -198,11 +229,12 @@ class Desk:
     # -- which Workbooks and Pages ------------------------------------------
 
     def workbooks(self) -> list:
-        """The Workbooks in the folder: the picker, and the only ids accepted."""
+        """The Workbooks in the folder, current month first: the picker, its
+        default, and the only ids accepted."""
         now = self._clock()
         if self._books is not None and now - self._books[0] < BOOKS_TTL:
             return self._books[1]
-        found = self._sheets().workbooks()
+        found = current_first(self._sheets().workbooks())
         self._books = (now, found)
         return found
 

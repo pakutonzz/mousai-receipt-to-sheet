@@ -16,8 +16,15 @@ sys.path.insert(0, str(ROOT / "src"))
 sys.path.insert(0, str(ROOT / "tests"))
 
 from mousai.page import PageError, RegionFull  # noqa: E402
-from mousai.review import PREVIEW_TTL, Desk, Draft, Stale  # noqa: E402
-from mousai.sheets import SheetsError  # noqa: E402
+from mousai.review import (  # noqa: E402
+    PREVIEW_TTL,
+    Desk,
+    Draft,
+    Stale,
+    current_first,
+    workbook_month,
+)
+from mousai.sheets import SheetsError, WorkbookRef  # noqa: E402
 from mousai.templates import PETTY_CASH  # noqa: E402
 from test_page import grid_for, occupy  # noqa: E402
 from test_sheets import FakeService  # noqa: E402
@@ -136,6 +143,47 @@ class Confirming(unittest.TestCase):
         key = desk.review(draft()).key
         desk.confirm(draft(), key, remember=True)
         self.assertTrue(any("addSheet" in r for b in service.batches for r in b["requests"]))
+
+
+class CurrentWorkbook(unittest.TestCase):
+    """The current Workbook is the latest month in a name, not the latest edit."""
+
+    def test_reads_the_month_from_the_name(self):
+        cases = {
+            "เบิกจ่ายเงินสด สิงหาคม26": dt.date(2026, 8, 1),
+            "เบิกจ่ายเงินสด กันยายน26": dt.date(2026, 9, 1),
+            "เบิกจ่ายเงินสด กันยายน 2569": dt.date(2026, 9, 1),
+            "เบิกจ่ายเงินสด ธันวาคม69": dt.date(2026, 12, 1),
+            "เงินสด ม.ค. 27": dt.date(2027, 1, 1),
+            "สำเนาทดสอบ": None,
+        }
+        for title, month in cases.items():
+            with self.subTest(title=title):
+                self.assertEqual(workbook_month(title), month)
+
+    def test_an_edit_to_last_month_does_not_make_it_current(self):
+        """Drive lists newest-modified first; August was touched most recently."""
+        books = [
+            WorkbookRef(id="aug", title="เบิกจ่ายเงินสด สิงหาคม26", modified="2026-09-03T09:00:00Z"),
+            WorkbookRef(id="copy", title="สำเนาทดสอบ", modified="2026-09-02T09:00:00Z"),
+            WorkbookRef(id="sep", title="เบิกจ่ายเงินสด กันยายน26", modified="2026-09-01T09:00:00Z"),
+        ]
+        self.assertEqual([b.id for b in current_first(books)], ["sep", "aug", "copy"])
+
+    def test_the_desk_offers_the_current_month_first(self):
+        service = FakeService({PAGE: grid_for(PAGE)}, {PAGE: 0})
+        books = [
+            WorkbookRef(id="aug", title="เบิกจ่ายเงินสด สิงหาคม26", modified="2026-09-03T09:00:00Z"),
+            WorkbookRef(id="sep", title="เบิกจ่ายเงินสด กันยายน26", modified="2026-09-01T09:00:00Z"),
+        ]
+        desk = Desk(lambda: FakeSheets(service, books), Clock())
+        self.assertEqual(desk.workbooks()[0].id, "sep")
+
+    def test_a_workbook_with_no_month_is_still_accepted(self):
+        service = FakeService({PAGE: grid_for(PAGE)}, {PAGE: 0})
+        books = [WorkbookRef(id="copy", title="สำเนาทดสอบ", modified="2026-09-02T09:00:00Z")]
+        desk = Desk(lambda: FakeSheets(service, books), Clock())
+        desk.check_workbook("copy")
 
 
 class Refusals(unittest.TestCase):

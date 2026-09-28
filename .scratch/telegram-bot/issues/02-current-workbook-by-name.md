@@ -1,6 +1,6 @@
 # Choose the current Workbook by the month in its name
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 01
 
 Today the default Workbook is the folder's most recently *modified* file. A
@@ -10,8 +10,8 @@ and entries land in a month that is closed.
 ## Scope
 
 - The current Workbook is the one whose name carries the latest month, e.g.
-  `เบิกจ่ายเงินสด กันยายน26` over `…สิงหาคม26`: Thai month name plus a two-digit
-  Buddhist year.
+  `เบิกจ่ายเงินสด กันยายน26` over `…สิงหาคม26`: a Thai month name plus a year,
+  read the way receipts are (26 is 2026; 69 and 2569 are 2026 too).
 - Used by the web page's default and by the bot. Files whose names carry no
   month sort last, and are still selectable by hand.
 - A late receipt keeps its true date in the current Workbook; the existing
