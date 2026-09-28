@@ -90,6 +90,7 @@ def incoming_from(update: Update, fetch: Callable[[str], bytes] | None = None) -
         name=user.full_name,
         username=user.username,
         photo=_photo(message, fetch),
+        album=message.media_group_id,
         message_id=message.message_id,
     )
 

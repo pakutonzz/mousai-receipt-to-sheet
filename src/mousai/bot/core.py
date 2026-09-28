@@ -40,7 +40,7 @@ from __future__ import annotations
 
 import datetime as dt
 import time
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from html import escape
 from typing import Callable
 
@@ -96,6 +96,8 @@ class Incoming:
     name: str = ""
     username: str | None = None
     photo: Photo | None = None
+    # Telegram's media group id: the photos of one album share it.
+    album: str | None = None
     # A button press: its callback data, and the message the button sits on.
     button: str | None = None
     message_id: int | None = None
@@ -124,6 +126,23 @@ class Waiting:
 
     txn_id: int
     what: str  # "purpose", "reject", or a field name
+
+
+@dataclass
+class Album:
+    """Photos sent together: one purpose for all of them, asked for once.
+
+    Telegram delivers an album as one message per photo, with the caption on
+    just one of them.
+    """
+
+    purpose: str | None = None
+    # Transactions waiting for the purpose, the one asked about first.
+    pending: list[int] = field(default_factory=list)
+
+
+# Albums remembered at once; older ones are long finished.
+ALBUMS_KEPT = 20
 
 
 class Bot:
@@ -155,6 +174,10 @@ class Bot:
         self._interpreter = interpreter or RuleInterpreter()
         self._today = today
         self._waiting: dict[int, Waiting] = {}
+        # Transactions that need a question while another is being asked,
+        # per chat; asked in turn, one at a time.
+        self._later: dict[int, list[int]] = {}
+        self._albums: dict[str, Album] = {}
         # The receipt's text, kept only until its Description is drafted.
         self._receipts: dict[int, str] = {}
         # The day the Queue reminder last went out. In memory: a restart after
@@ -205,7 +228,6 @@ class Bot:
         if incoming.button:
             return self._button(person, incoming)
         if incoming.photo:
-            self._waiting.pop(chat, None)
             return self._photo(person, incoming)
         text = (incoming.text or "").strip()
         if text in QUEUE_COMMANDS:
@@ -251,6 +273,12 @@ class Bot:
 
     def _photo(self, person: Person, incoming: Incoming) -> list[Send]:
         chat = incoming.chat_id
+        album = self._album(incoming.album)
+        # A new receipt drops an unanswered question; the rest of an album
+        # does not, since it is the same handing-in.
+        if album is None or not (album.pending or album.purpose):
+            self._waiting.pop(chat, None)
+            self._later.pop(chat, None)
         reading = self._reader.read_image(incoming.photo.fetch(), incoming.photo.mime)
         draft = self._fresh_draft(person, on=reading.date, amount=reading.amount)
         txn = self._store.add(
@@ -261,10 +289,30 @@ class Bot:
         )
         self._receipts[txn.id] = reading.text
         purpose = (incoming.text or "").strip()
+        if album is not None:
+            if purpose:
+                album.purpose = purpose
+            elif album.purpose:
+                purpose = album.purpose
+            elif album.pending:
+                # Already asked for this album: answered once for all.
+                album.pending.append(txn.id)
+                return []
         if purpose:
             return self._describe(person, chat, txn.id, purpose)
+        if album is not None:
+            album.pending.append(txn.id)
         self._waiting[chat] = Waiting(txn.id, "purpose")
         return [Send(chat, render.say("bot_ask_purpose"), buttons=render.purpose_buttons(txn.id))]
+
+    def _album(self, album_id: str | None) -> Album | None:
+        if album_id is None:
+            return None
+        if album_id not in self._albums:
+            while len(self._albums) >= ALBUMS_KEPT:
+                del self._albums[next(iter(self._albums))]
+            self._albums[album_id] = Album()
+        return self._albums[album_id]
 
     def _fresh_draft(self, person: Person, *, on, amount) -> Draft:
         books = self._desk.workbooks()
@@ -296,23 +344,53 @@ class Bot:
         return (petty or [name for name, _ in pages])[-1]
 
     def _describe(self, person: Person, chat: int, txn_id: int, purpose: str) -> list[Send]:
-        text = self._receipts.pop(txn_id, "")
-        drafted = self._describer.describe(text, purpose) if (text and self._describer) else None
-        if drafted:
-            txn = self._store.get(txn_id)
-            self._store.update(txn_id, replace(txn.draft, description=drafted))
-        return self._next(person, chat, txn_id)
+        """Draft the Description from the purpose, for this receipt and the rest
+        of its album still waiting for one."""
+        ids = [txn_id]
+        for album in self._albums.values():
+            if txn_id in album.pending:
+                album.purpose = purpose
+                ids += [i for i in album.pending if i != txn_id]
+                album.pending.clear()
+        for i in ids:
+            text = self._receipts.pop(i, "")
+            drafted = self._describer.describe(text, purpose) if (text and self._describer) else None
+            txn = self._store.get(i)
+            if drafted and txn is not None and txn.state == "open":
+                self._store.update(i, replace(txn.draft, description=drafted))
+        out: list[Send] = []
+        for i in ids:
+            txn = self._store.get(i)
+            if txn is not None and txn.state == "open":
+                out += self._next(person, chat, i)
+        return out
 
     def _next(self, person: Person, chat: int, txn_id: int) -> list[Send]:
-        """Ask for whatever is still missing, or show the Review."""
+        """Ask for whatever is still missing, or show the Review.
+
+        One question at a time per chat: while another receipt's question is
+        open, this one waits its turn rather than taking the answer.
+        """
         draft = self._store.get(txn_id).draft
-        if not draft.description:
-            self._waiting[chat] = Waiting(txn_id, "description")
-            return [Send(chat, render.say("bot_ask_description"))]
-        if not draft.ready:
-            self._waiting[chat] = Waiting(txn_id, "amount")
-            return [Send(chat, render.say("bot_ask_amount"))]
-        return self._show(person, chat, txn_id, edit=self._review_message(txn_id, chat))
+        need = "description" if not draft.description else None if draft.ready else "amount"
+        if need:
+            asking = self._waiting.get(chat)
+            if asking is not None and asking.txn_id != txn_id:
+                self._later.setdefault(chat, []).append(txn_id)
+                return []
+            self._waiting[chat] = Waiting(txn_id, need)
+            return [Send(chat, render.say(f"bot_ask_{need}"))]
+        shown = self._show(person, chat, txn_id, edit=self._review_message(txn_id, chat))
+        return shown + self._resume(person, chat)
+
+    def _resume(self, person: Person, chat: int) -> list[Send]:
+        """The next receipt that was waiting to ask its question, if any."""
+        later = self._later.get(chat, [])
+        while later and chat not in self._waiting:
+            txn = self._store.get(later.pop(0))
+            if txn is not None and self._may_act(person, txn):
+                return self._next(person, chat, txn.id)
+        return []
 
     # -- typed text ---------------------------------------------------------
 
@@ -406,10 +484,19 @@ class Bot:
             self._workbook_title(txn.draft.workbook_id),
             lead,
             no_receipt=txn.photo_unique_id is None,
+            duplicate=self._seen(txn),
         )
         if buttons is None:
             buttons = render.review_buttons(txn_id, review.key, mode=self._mode(person, txn))
         return [Send(chat, text, buttons=buttons, html=True, edit=edit, remember=txn_id)]
+
+    def _seen(self, txn):
+        """Where this very photo already went, if it became an Entry before.
+
+        Only the same file is caught: Telegram gives each upload an id, so a
+        second photo of the same receipt looks new.
+        """
+        return self._store.recorded_photo(txn.photo_unique_id) if txn.photo_unique_id else None
 
     def _review_message(self, txn_id: int, chat: int) -> int | None:
         shown = [m for c, m, kind in self._store.shown_in(txn_id) if c == chat and kind == "review"]
@@ -623,6 +710,8 @@ class Bot:
             amount=render.money(draft.amount),
             on=f"{draft.on:%d/%m/%Y}",
         )
+        if (seen := self._seen(txn)) is not None:
+            card += "\n" + render.duplicate_line(seen)
         if txn.photo_file_id is None:
             card += "\n" + render.say("bot_review_no_receipt")
         cards = [

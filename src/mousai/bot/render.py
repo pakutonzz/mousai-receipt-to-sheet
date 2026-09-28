@@ -44,8 +44,18 @@ def state(name: str) -> str:
     return say(f"state_{name}")
 
 
+def duplicate_line(seen) -> str:
+    """"รูปนี้บันทึกไปแล้ว: เงินสดย่อย6 แถว 21 · ‹Description›"."""
+    return say("bot_review_duplicate", page=seen.page, row=seen.row, description=seen.description)
+
+
 def review_text(
-    review: Review, workbook_title: str, lead: Notice | None = None, *, no_receipt: bool = False
+    review: Review,
+    workbook_title: str,
+    lead: Notice | None = None,
+    *,
+    no_receipt: bool = False,
+    duplicate=None,
 ) -> str:
     draft = review.draft
     lines = []
@@ -66,6 +76,8 @@ def review_text(
             )
         )
     )
+    if duplicate is not None:
+        lines.append(f"⚠️ {escape(duplicate_line(duplicate))}")
     if no_receipt:
         lines.append(f"⚠️ {escape(say('bot_review_no_receipt'))}")
     for warning in review.warnings:

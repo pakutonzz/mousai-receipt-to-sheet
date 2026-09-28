@@ -302,6 +302,7 @@ class TelegramSide(unittest.TestCase):
                     "chat": {"id": 42, "type": "private"},
                     "from": {"id": 42, "is_bot": False, "first_name": "มน"},
                     "caption": "รับรองลูกค้า",
+                    "media_group_id": "album-7",
                     "photo": [
                         {"file_id": "small", "file_unique_id": "u-small", "width": 90, "height": 160},
                         {"file_id": "big", "file_unique_id": "u-big", "width": 720, "height": 1280},
@@ -314,6 +315,7 @@ class TelegramSide(unittest.TestCase):
         incoming = incoming_from(update, lambda file_id: fetched.append(file_id) or b"jpeg")
         self.assertEqual(incoming.text, "รับรองลูกค้า")
         self.assertEqual((incoming.photo.file_id, incoming.photo.unique_id), ("big", "u-big"))
+        self.assertEqual(incoming.album, "album-7")
         # Nothing is downloaded until the core decides the sender may send.
         self.assertEqual(fetched, [])
         self.assertEqual(incoming.photo.fetch(), b"jpeg")
