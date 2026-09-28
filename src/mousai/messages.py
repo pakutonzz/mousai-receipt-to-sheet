@@ -65,6 +65,14 @@ TH = {
     "unknown_workbook": "ไม่พบไฟล์นี้ในโฟลเดอร์ที่ใช้งาน",
     "ocr_busy": "อ่านใบเสร็จครบจำนวนที่อนุญาตในช่วงนี้แล้ว กรุณากรอกเอง",
     "request_too_large": "ข้อมูลที่ส่งมาใหญ่เกินไป",
+    "people_missing": "ไม่พบไฟล์รายชื่อผู้ใช้ {path}",
+    "people_unreadable": "อ่านไฟล์รายชื่อผู้ใช้ไม่ได้: {detail}",
+    "people_missing_field": "รายชื่อคนที่ {entry} ไม่มีช่อง {field}",
+    "people_bad_id": "รายชื่อคนที่ {entry}: telegram_id ต้องเป็นตัวเลขบวก",
+    "people_unknown_role": "รายชื่อคนที่ {entry}: ไม่รู้จักบทบาท {role} (ใช้ได้: keeper, recorder, operator)",
+    "people_duplicate_id": "telegram_id {id} ซ้ำกัน ในรายชื่อคนที่ {first} และ {second}",
+    "people_no_keeper": "ต้องมีผู้ดูแลสมุด (keeper) อย่างน้อยหนึ่งคน",
+    "people_no_operator": "ต้องมีผู้ดูแลระบบ (operator) อย่างน้อยหนึ่งคน",
     "preview_stale": "ข้อมูลในหน้า {page} เปลี่ยนไประหว่างที่ตรวจสอบ (อาจมีคนบันทึกพร้อมกัน) ยังไม่ได้บันทึก กรุณาตรวจสอบเซลล์อีกครั้ง",
 }
 
@@ -111,6 +119,14 @@ EN = {
     "unknown_workbook": "that spreadsheet is not in the Workbook folder",
     "ocr_busy": "the receipt-reading limit for now has been reached; type the fields",
     "request_too_large": "the request is too large",
+    "people_missing": "no people file at {path}",
+    "people_unreadable": "cannot read the people file: {detail}",
+    "people_missing_field": "person {entry} has no {field}",
+    "people_bad_id": "person {entry}: telegram_id must be a positive number",
+    "people_unknown_role": "person {entry}: unknown role {role} (use keeper, recorder, operator)",
+    "people_duplicate_id": "telegram_id {id} appears twice, for persons {first} and {second}",
+    "people_no_keeper": "at least one person must be a keeper",
+    "people_no_operator": "at least one person must be an operator",
     "preview_stale": "{page} changed while it was being checked (someone else may have written to it); nothing was written, check the cells again",
 }
 

@@ -1,0 +1,47 @@
+# รายชื่อคนที่ใช้ bot ได้ · Who may use the bot
+#
+# คัดลอกเป็น people.toml แล้วแก้ไข (people.toml อยู่ใน .gitignore เพราะมีชื่อจริง)
+# Copy to people.toml and edit. people.toml is gitignored: it holds real names.
+#
+# แก้แล้วไม่ต้องรีสตาร์ต bot จะอ่านไฟล์ใหม่เอง ถ้าแก้ผิด bot จะใช้รายชื่อชุดเดิมต่อ
+# และแจ้ง operator จนกว่าจะแก้ให้ถูก
+# Edits apply without a restart. A broken edit is refused and the previous list
+# stays in force until the file is fixed.
+#
+# หา telegram_id: ให้คนนั้นทักหา bot ครั้งแรก bot จะตอบรหัสกลับไป
+# Finding a telegram_id: have the person message the bot; it replies with it.
+#
+# roles (บทบาท) ใส่ได้หนึ่งอย่างขึ้นไป · one or more of:
+#   "keeper"   ผู้ดูแลสมุด ยืนยันรายการลงสมุดได้ และส่งรายการของตัวเองได้
+#              may confirm into the Workbook, and hands in their own receipts
+#   "recorder" ผู้บันทึก ส่งรายการได้ แต่ต้องรอ keeper ตรวจในคิว
+#              hands receipts in; they wait in the Queue for a Keeper
+#   "operator" ผู้ดูแลระบบ ได้รับคำขอใช้งานและแจ้งเตือนเมื่อระบบขัดข้อง
+#              receives access requests and system failures
+#
+# requester (ผู้เบิก) ชื่อที่จะใส่ในช่องผู้เบิกเป็นค่าเริ่มต้น ไม่ใส่ = ใช้ name
+# The default name for ผู้เบิก. Leave it out to use `name`.
+#
+# ต้องมี keeper และ operator อย่างน้อยอย่างละหนึ่งคน
+# At least one keeper and one operator are required.
+
+[[person]]
+telegram_id = 111111111
+name = "มน"
+roles = ["keeper"]
+
+[[person]]
+telegram_id = 222222222
+name = "เจ้าของคลินิก"
+roles = ["keeper"]
+requester = "-"
+
+[[person]]
+telegram_id = 333333333
+name = "ผู้ช่วย"
+roles = ["recorder"]
+
+[[person]]
+telegram_id = 444444444
+name = "ผู้ดูแลระบบ"
+roles = ["operator"]
