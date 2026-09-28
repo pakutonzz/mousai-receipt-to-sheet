@@ -14,3 +14,11 @@ Blocked by: 03, 09
 
 - After a reboot of the Mac, the bot answers a Keeper without anyone logging in
   to start it by hand.
+
+## Comments
+
+**2026-09-28, agent.** Started early for ticket 08's live check: the LaunchAgent
+`com.mousai.bot` runs `scripts/bot.py`, restarts on crash, and logs to
+`~/Library/Logs/mousai/bot.log` without token-bearing URLs. Left: telling the
+operator when it restarts after a crash, the README section, and the reboot
+check.

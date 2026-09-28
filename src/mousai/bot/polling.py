@@ -12,10 +12,11 @@ import asyncio
 import logging
 
 from telegram import Update
+from telegram.error import TelegramError
 from telegram.constants import ChatType
 from telegram.ext import Application, ApplicationBuilder, ContextTypes, MessageHandler, filters
 
-from .core import Bot, Incoming
+from .core import Bot, Incoming, Send
 
 log = logging.getLogger("mousai.bot")
 
@@ -34,6 +35,23 @@ def incoming_from(update: Update) -> Incoming | None:
     )
 
 
+async def deliver(send_message, replies: list[Send]) -> int:
+    """Send each reply on its own, so one unreachable chat cannot silence the rest.
+
+    The usual failure is "Chat not found": a bot cannot message anyone who has
+    never messaged it, which is true of every operator and Keeper until they
+    first write to the bot. That is logged as one line, and the others still go.
+    """
+    sent = 0
+    for reply in replies:
+        try:
+            await send_message(chat_id=reply.chat_id, text=reply.text)
+            sent += 1
+        except TelegramError as error:
+            log.warning("could not message chat %s: %s", reply.chat_id, error)
+    return sent
+
+
 def build(token: str, bot: Bot) -> Application:
     app = ApplicationBuilder().token(token).build()
 
@@ -43,8 +61,15 @@ def build(token: str, bot: Bot) -> Application:
             return
         # The core blocks on Sheets and Vision; keep it off the event loop.
         replies = await asyncio.to_thread(bot.handle, incoming)
-        for reply in replies:
-            await context.bot.send_message(chat_id=reply.chat_id, text=reply.text)
+        sent = await deliver(context.bot.send_message, replies)
+        # Who and how many, never what: messages can name patients.
+        log.info(
+            "update from %s (%s): %d of %d replies sent",
+            incoming.user_id,
+            "private" if incoming.private else "group",
+            sent,
+            len(replies),
+        )
 
     async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:
         log.error("handling an update failed", exc_info=context.error)

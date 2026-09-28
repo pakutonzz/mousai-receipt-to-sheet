@@ -191,6 +191,30 @@ class TelegramSide(unittest.TestCase):
 
         self.assertFalse(incoming_from(self.update(chat_type="group")).private)
 
+    def test_one_unreachable_chat_does_not_silence_the_rest(self):
+        """A bot cannot message someone who never messaged it; the others
+        must still hear."""
+        import asyncio
+
+        from telegram.error import BadRequest
+
+        from mousai.bot.core import Send
+        from mousai.bot.polling import deliver
+
+        delivered = []
+
+        async def send_message(chat_id, text):
+            if chat_id == 444:
+                raise BadRequest("Chat not found")
+            delivered.append(chat_id)
+
+        replies = [Send(99, "your id"), Send(444, "request"), Send(8880, "request")]
+        with self.assertLogs("mousai.bot", level="WARNING") as logs:
+            sent = asyncio.run(deliver(send_message, replies))
+        self.assertEqual(sent, 2)
+        self.assertEqual(delivered, [99, 8880])
+        self.assertIn("444", logs.output[0])
+
     def test_the_application_builds_without_the_network(self):
         from mousai.bot.polling import build
 

@@ -56,3 +56,8 @@ Still with a person: add the deploy key's public half on GitHub (read-only),
 switch the clone's remote to `git@github-mousai:pakutonzz/mousai-receipt-to-sheet.git`,
 and put the bot token into the Mac's `.env`. The reboot check in "Done when"
 has not been run.
+
+**2026-09-28, agent.** The deploy key is on GitHub (read-only, fingerprint
+`SHA256:Q8jzMGDu4V97IbaLeu3/p7Rq3m+MJaiFrEyOKZh5s8g`, matching the Mac's), the
+clone's remote uses it, and `git fetch`/`git pull` work with it alone. The bot
+token is in the Mac's `.env`. Left: the reboot check.
