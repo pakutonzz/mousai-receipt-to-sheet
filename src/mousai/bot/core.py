@@ -506,12 +506,15 @@ class Bot:
             review = self._desk.review(txn.draft)
         except (SheetsError, PageError) as error:
             # A full or broken Page: say so, and offer the fields, since
-            # choosing another Page is usually the way out.
+            # choosing another Page is usually the way out. Never a new Page
+            # (D09): opening one is a person's job in the Workbook.
+            mode = self._mode(person, txn)
+            lines = [thai(error.notice), render.say(f"bot_full_{mode}")]
             return [
                 Send(
                     chat,
-                    escape(thai(error.notice)),
-                    buttons=render.field_buttons(txn_id),
+                    escape("\n".join(lines)),
+                    buttons=render.full_buttons(txn_id, mode=mode),
                     html=True,
                     edit=edit,
                     remember=txn_id,
@@ -597,6 +600,8 @@ class Bot:
             return []
         if action == "op":
             return self._open(person, chat, message, txn)
+        if action == "ap":
+            return self._make_active(person, chat, txn)
         if not self._may_act(person, txn):
             if txn.state in ("open", "queued"):
                 return []
@@ -705,7 +710,11 @@ class Bot:
         except Stale:
             self._store.release(txn.id)
             return self._show(person, chat, txn.id, edit=message, lead=Notice("bot_stale_redrawn"))
-        except (SheetsError, PageError) as error:
+        except PageError:
+            # Filled up since the Review: the same view as a full Page.
+            self._store.release(txn.id)
+            return self._show(person, chat, txn.id, edit=message)
+        except SheetsError as error:
             self._store.release(txn.id)
             return [Send(chat, thai(error.notice))]
         self._store.confirm(
@@ -719,7 +728,8 @@ class Bot:
         saved = "\n".join([render.say("bot_saved", **where, **what, balance=balance), *facts])
         if txn.photo_unique_id is None:
             saved += "\n" + render.say("bot_saved_no_receipt")
-        out = [Send(chat, saved, edit=message)]
+        offer = render.active_buttons(txn.id, draft.page) if self._not_active(draft) else ()
+        out = [Send(chat, saved, buttons=offer, edit=message)]
         out += self._keepers_told(person, txn, where, what, balance, facts)
         if txn.sender_id != person.telegram_id:
             decided = render.say("bot_decided_confirmed", keeper=person.name, **where)
@@ -727,6 +737,26 @@ class Bot:
             outcome = render.say("bot_outcome_confirmed", keeper=person.name, **where, **what)
             out.append(Send(txn.sender_id, outcome))
         return out
+
+    def _not_active(self, draft) -> bool:
+        """Whether the Page written to is other than its Fund's Active Page."""
+        fund = self._desk.template_for(draft.page).fund
+        try:
+            active = self._desk.active_page(draft.workbook_id, fund)
+        except SheetsError:
+            return False
+        if active is None:
+            pages = self._desk.workbook(draft.workbook_id).writable_pages()
+            of_fund = [name for name, template in pages if template.fund == fund]
+            active = of_fund[-1] if of_fund else None
+        return draft.page != active
+
+    def _make_active(self, person: Person, chat: int, txn) -> list[Send]:
+        """The offer taken: the Page becomes its Fund's Active Page for everyone."""
+        if not person.is_keeper or txn.state != "confirmed":
+            return []
+        fund = self._desk.make_active(txn.draft.workbook_id, txn.draft.page)
+        return [Send(chat, render.say("bot_made_active", fund=fund, page=txn.draft.page))]
 
     def _keepers_told(self, keeper: Person, txn, where, what, balance, facts) -> list[Send]:
         """Every other Keeper hears of each saved Entry, and what needs their eye:
@@ -759,9 +789,9 @@ class Bot:
             return [self._settled(chat, message, self._store.get(txn.id))]
         self._waiting.pop(chat, None)
         draft = txn.draft
-        handed = render.say(
-            "bot_handed_in", description=draft.description, amount=render.money(draft.amount)
-        )
+        what = dict(description=draft.description, amount=render.money(draft.amount))
+        parked = person.is_keeper
+        handed = render.say("bot_parked" if parked else "bot_handed_in", **what)
         card = render.say(
             "bot_queue_card",
             id=txn.id,
@@ -784,8 +814,11 @@ class Bot:
                 kind="photo_card" if txn.photo_file_id else "card",
             )
             for keeper in self._people.current().keepers
+            if keeper.telegram_id != person.telegram_id
         ]
-        return [Send(chat, handed, edit=message)] + cards
+        # A Keeper parking their own keeps a way back to it on the same message.
+        mine = render.open_buttons(txn.id) if parked else ()
+        return [Send(chat, handed, buttons=mine, edit=message)] + cards
 
     def _open(self, person: Person, chat: int, message: int | None, txn) -> list[Send]:
         """A Keeper opens a queued item: its Review, worked out now."""

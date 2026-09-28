@@ -111,6 +111,20 @@ def review_buttons(txn_id: int, key: str, *, mode: str) -> tuple[tuple[Button, .
     return (confirm,), (edit, cancel)
 
 
+def full_buttons(txn_id: int, *, mode: str) -> tuple[tuple[Button, ...], ...]:
+    """A Page with no room: the fields, to pick another Page, and a way to wait."""
+    rows = field_buttons(txn_id)[:-1]
+    if mode == "queue":
+        return (*rows, (Button(say("bot_button_reject"), f"rj:{txn_id}"),))
+    # Parked or handed in, it waits in the Queue for a Keeper to pick a Page.
+    wait = say("bot_button_park" if mode == "own" else "bot_button_hand_in")
+    return (*rows, (Button(wait, f"hi:{txn_id}"), Button(say("bot_button_cancel"), f"no:{txn_id}")))
+
+
+def active_buttons(txn_id: int, page: str) -> tuple[tuple[Button, ...], ...]:
+    return ((Button(say("bot_button_make_active", page=page), f"ap:{txn_id}"),),)
+
+
 def open_buttons(txn_id: int) -> tuple[tuple[Button, ...], ...]:
     return ((Button(say("bot_button_open"), f"op:{txn_id}"),),)
 

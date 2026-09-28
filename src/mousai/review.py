@@ -259,6 +259,17 @@ class Desk:
         self._requesters[workbook_id] = (now, names)
         return names
 
+    def active_page(self, workbook_id: str, fund: str) -> str | None:
+        """The Page new Entries of this Fund go to, as remembered in the Workbook."""
+        return self.workbook(workbook_id).active_page(fund)
+
+    def make_active(self, workbook_id: str, page: str) -> str:
+        """Remember the Page as its Fund's Active Page: the web page's switch.
+        Returns the Fund."""
+        template = self.template_for(page)
+        self.workbook(workbook_id).remember_page(template.fund, page)
+        return template.fund
+
     @staticmethod
     def template_for(page: str) -> Template:
         template = fund_for_page(page)
