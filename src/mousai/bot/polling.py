@@ -9,6 +9,7 @@ back, which is why pending updates are kept, not dropped, at startup.
 from __future__ import annotations
 
 import asyncio
+import datetime as dt
 import logging
 from typing import Callable
 
@@ -35,6 +36,9 @@ MAX_IMAGE_FILE = 10 * 1024 * 1024
 
 # How long a worker thread waits for Telegram to hand over a photo.
 DOWNLOAD_TIMEOUT = 60
+
+# How often the daily Queue reminder is checked for; the core decides.
+REMIND_CHECK = 10 * 60
 
 
 def _photo(message, fetch: Callable[[str], bytes] | None) -> Photo | None:
@@ -107,8 +111,8 @@ async def deliver(telegram, replies: list[Send], remember=None) -> int:
     first write to the bot. That is logged as one line, and the others still go.
 
     An edit that Telegram refuses (the message is too old, or was deleted) is
-    sent as a new message instead. `remember(txn_id, chat_id, message_id)`
-    records where a Review went, so the next change can redraw it.
+    sent as a new message instead. `remember(txn_id, chat_id, message_id, kind)`
+    records where a Review or a Queue card went, so the next change can edit it.
     """
     sent = 0
     for reply in replies:
@@ -117,20 +121,37 @@ async def deliver(telegram, replies: list[Send], remember=None) -> int:
             message = None
             if reply.edit is not None:
                 try:
-                    message = await telegram.edit_message_text(
-                        reply.text,
-                        chat_id=reply.chat_id,
-                        message_id=reply.edit,
-                        parse_mode=parse_mode,
-                        reply_markup=_markup(reply),
-                    )
+                    if reply.caption:
+                        message = await telegram.edit_message_caption(
+                            chat_id=reply.chat_id,
+                            message_id=reply.edit,
+                            caption=reply.text,
+                            parse_mode=parse_mode,
+                            reply_markup=_markup(reply),
+                        )
+                    else:
+                        message = await telegram.edit_message_text(
+                            reply.text,
+                            chat_id=reply.chat_id,
+                            message_id=reply.edit,
+                            parse_mode=parse_mode,
+                            reply_markup=_markup(reply),
+                        )
                 except BadRequest as error:
                     if "not modified" not in str(error).lower():
                         log.info("could not edit a message in chat %s: %s", reply.chat_id, error)
                         message = None
                     else:
                         message = True
-            if message is None:
+            if message is None and reply.photo is not None:
+                message = await telegram.send_photo(
+                    chat_id=reply.chat_id,
+                    photo=reply.photo,
+                    caption=reply.text,
+                    parse_mode=parse_mode,
+                    reply_markup=_markup(reply),
+                )
+            elif message is None:
                 message = await telegram.send_message(
                     chat_id=reply.chat_id,
                     text=reply.text,
@@ -140,14 +161,40 @@ async def deliver(telegram, replies: list[Send], remember=None) -> int:
             sent += 1
             message_id = getattr(message, "message_id", None)
             if remember is not None and reply.remember is not None and message_id is not None:
-                remember(reply.remember, reply.chat_id, message_id)
+                remember(reply.remember, reply.chat_id, message_id, reply.kind)
         except TelegramError as error:
             log.warning("could not message chat %s: %s", reply.chat_id, error)
     return sent
 
 
 def build(token: str, bot: Bot) -> Application:
-    app = ApplicationBuilder().token(token).build()
+    async def remind(app: Application) -> None:
+        """Ask the core every few minutes whether the daily reminder is due."""
+        while True:
+            await asyncio.sleep(REMIND_CHECK)
+            try:
+                replies = await asyncio.to_thread(bot.reminders, dt.datetime.now())
+                if replies:
+                    sent = await deliver(app.bot, replies, bot.remember)
+                    log.info("queue reminder: %d of %d sent", sent, len(replies))
+            except Exception:
+                log.exception("the queue reminder failed")
+
+    async def post_init(app: Application) -> None:
+        app.bot_data["reminders"] = asyncio.get_running_loop().create_task(remind(app))
+
+    async def post_shutdown(app: Application) -> None:
+        task = app.bot_data.get("reminders")
+        if task is not None:
+            task.cancel()
+
+    app = (
+        ApplicationBuilder()
+        .token(token)
+        .post_init(post_init)
+        .post_shutdown(post_shutdown)
+        .build()
+    )
 
     async def on_update(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         loop = asyncio.get_running_loop()

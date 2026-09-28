@@ -18,6 +18,9 @@ from ..review import Review, severity
 # own most frequent purposes can replace it once it is clear which recur.
 PURPOSES = ("รับรองลูกค้า", "ใช้ในคลินิก", "ส่งยาให้คนไข้", "เลี้ยงพนักงาน")
 
+# Offered when a Keeper rejects a queued Transaction; anything else is typed.
+REJECT_REASONS = ("ซ้ำ", "ไม่ใช่ค่าใช้จ่ายของคลินิก", "ข้อมูลไม่ครบ")
+
 # Fields that are typed, and fields picked from a list.
 TYPED_FIELDS = ("amount", "on", "description", "requester", "note")
 PICKED_FIELDS = ("page", "workbook")
@@ -35,6 +38,10 @@ def say(code: str, **values) -> str:
 
 def money(value: float) -> str:
     return f"{value:,.2f}"
+
+
+def state(name: str) -> str:
+    return say(f"state_{name}")
 
 
 def review_text(
@@ -75,15 +82,44 @@ def review_text(
     return "\n".join(lines)
 
 
-def review_buttons(txn_id: int, key: str, *, keeper: bool) -> tuple[tuple[Button, ...], ...]:
-    first = (Button(say("bot_button_confirm"), f"ok:{txn_id}:{key}"),) if keeper else ()
-    return (
-        first,
-        (
-            Button(say("bot_button_edit"), f"ed:{txn_id}"),
-            Button(say("bot_button_cancel"), f"no:{txn_id}"),
-        ),
-    )
+def review_buttons(txn_id: int, key: str, *, mode: str) -> tuple[tuple[Button, ...], ...]:
+    """The Review's buttons, by who is looking at what.
+
+    "own": a Keeper's own receipt, confirmed directly.
+    "hand_in": a Recorder's receipt, handed in to the Queue.
+    "queue": a Keeper looking at a Recorder's receipt, to confirm or reject.
+    """
+    edit = Button(say("bot_button_edit"), f"ed:{txn_id}")
+    confirm = Button(say("bot_button_confirm"), f"ok:{txn_id}:{key}")
+    if mode == "queue":
+        return (confirm,), (edit, Button(say("bot_button_reject"), f"rj:{txn_id}"))
+    cancel = Button(say("bot_button_cancel"), f"no:{txn_id}")
+    if mode == "hand_in":
+        return (Button(say("bot_button_hand_in"), f"hi:{txn_id}"),), (edit, cancel)
+    return (confirm,), (edit, cancel)
+
+
+def open_buttons(txn_id: int) -> tuple[tuple[Button, ...], ...]:
+    return ((Button(say("bot_button_open"), f"op:{txn_id}"),),)
+
+
+def reason_buttons(txn_id: int) -> tuple[tuple[Button, ...], ...]:
+    buttons = [Button(r, f"rr:{txn_id}:{i}") for i, r in enumerate(REJECT_REASONS)]
+    rows = [(b,) for b in buttons]
+    rows.append((Button(say("bot_button_type"), f"rr:{txn_id}:x"),))
+    rows.append((Button(say("bot_button_back"), f"bk:{txn_id}"),))
+    return tuple(rows)
+
+
+def queue_list(header: str, lines: list[tuple[int, str]], more: int, *, buttons: bool):
+    """The Queue as one message: a line per item, and a button per item for Keepers."""
+    text = "\n".join([header, *(line for _, line in lines)])
+    if more:
+        text += "\n" + say("bot_queue_more", count=more)
+    if not buttons:
+        return text, ()
+    items = [Button(say("bot_button_open_item", id=txn_id), f"op:{txn_id}") for txn_id, _ in lines]
+    return text, tuple(tuple(items[i : i + 3]) for i in range(0, len(items), 3))
 
 
 def field_buttons(txn_id: int) -> tuple[tuple[Button, ...], ...]:

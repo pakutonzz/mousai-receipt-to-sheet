@@ -93,7 +93,7 @@ class Base(unittest.TestCase):
             else:
                 message_id = reply.edit
             if reply.remember is not None:
-                self.bot.remember(reply.remember, reply.chat_id, message_id)
+                self.bot.remember(reply.remember, reply.chat_id, message_id, reply.kind)
         return replies
 
     def photo(self, caption=None, who=MON):
@@ -172,7 +172,8 @@ class HappyPath(Base):
         self.press(ok)
         again = self.press(ok)
         self.assertEqual(len(written(self.service)), 1)
-        self.assertIn(thai(Notice("txn_settled", {"state": "confirmed"})), again[0].text)
+        self.assertIn("มน", again[0].text)
+        self.assertIn(thai(Notice("state_confirmed")), again[0].text)
 
 
 class Purpose(Base):

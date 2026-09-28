@@ -164,6 +164,8 @@ class FakeTelegram:
         self.sent: list[tuple[int, str]] = []
         self.edited: list[tuple[int, int, str]] = []
         self.markups: list = []
+        self.photos: list[tuple[int, str, str]] = []
+        self.captions: list[tuple[int, int, str]] = []
         self.next_id = 500
 
     async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
@@ -177,6 +179,22 @@ class FakeTelegram:
         self.markups.append(reply_markup)
         self.next_id += 1
         return SimpleNamespace(message_id=self.next_id)
+
+    async def send_photo(self, chat_id, photo, caption=None, parse_mode=None, reply_markup=None):
+        from types import SimpleNamespace
+
+        self.photos.append((chat_id, photo, caption))
+        self.markups.append(reply_markup)
+        self.next_id += 1
+        return SimpleNamespace(message_id=self.next_id)
+
+    async def edit_message_caption(
+        self, chat_id, message_id, caption=None, parse_mode=None, reply_markup=None
+    ):
+        from types import SimpleNamespace
+
+        self.captions.append((chat_id, message_id, caption))
+        return SimpleNamespace(message_id=message_id)
 
     async def edit_message_text(self, text, chat_id, message_id, parse_mode=None, reply_markup=None):
         from types import SimpleNamespace
@@ -317,10 +335,28 @@ class TelegramSide(unittest.TestCase):
         ]
         sent = asyncio.run(deliver(telegram, replies, lambda *a: remembered.append(a)))
         self.assertEqual(sent, 2)
-        self.assertEqual(remembered, [(1, 42, 501)])
+        self.assertEqual(remembered, [(1, 42, 501, "review")])
         markup = telegram.markups[0]
         self.assertEqual([[b.callback_data for b in row] for row in markup.inline_keyboard], [["ok:1:k"]])
         self.assertEqual(telegram.edited, [(42, 501, "saved")])
+
+    def test_queue_cards_are_photos_and_their_captions_are_edited(self):
+        import asyncio
+
+        from mousai.bot.core import Send
+        from mousai.bot.polling import deliver
+
+        telegram = FakeTelegram()
+        remembered = []
+        replies = [
+            Send(42, "waiting #1", photo="file-1", remember=1, kind="photo_card"),
+            Send(43, "saved by มน", edit=77, caption=True),
+        ]
+        asyncio.run(deliver(telegram, replies, lambda *a: remembered.append(a)))
+        self.assertEqual(telegram.photos, [(42, "file-1", "waiting #1")])
+        self.assertEqual(remembered, [(1, 42, 501, "photo_card")])
+        self.assertEqual(telegram.captions, [(43, 77, "saved by มน")])
+        self.assertEqual(telegram.sent, [])
 
     def test_an_edit_telegram_refuses_is_sent_new(self):
         import asyncio
@@ -336,7 +372,7 @@ class TelegramSide(unittest.TestCase):
         self.assertEqual(sent, 1)
         self.assertEqual(telegram.sent, [(42, "review again")])
         # The new message is now the Review to redraw.
-        self.assertEqual(remembered, [(1, 42, 501)])
+        self.assertEqual(remembered, [(1, 42, 501, "review")])
 
     def test_the_application_builds_without_the_network(self):
         from mousai.bot.polling import build
