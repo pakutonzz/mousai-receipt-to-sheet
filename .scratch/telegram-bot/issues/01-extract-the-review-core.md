@@ -1,6 +1,6 @@
 # Extract the Review core out of web.py
 
-Status: ready-for-agent
+Status: resolved
 
 `web.py` holds, inline in its routes, everything that makes writing safe: the
 cached Page read for previews, `check_book`, `labelled_cells`, `fingerprint`,
