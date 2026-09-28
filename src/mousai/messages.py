@@ -75,6 +75,12 @@ TH = {
     "people_no_operator": "ต้องมีผู้ดูแลระบบ (operator) อย่างน้อยหนึ่งคน",
     "txn_missing": "ไม่พบรายการนี้แล้ว",
     "txn_settled": "รายการนี้ดำเนินการไปแล้ว ({state})",
+    "bot_not_allowed": "ยังไม่ได้รับอนุญาตให้ใช้งาน รหัสของคุณคือ {id} ส่งรหัสนี้ให้ผู้ดูแลระบบเพื่อขอใช้งาน",
+    "bot_access_request": "มีคนขอใช้งาน bot: {who} รหัส {id} ถ้าอนุญาต ให้เพิ่มรหัสนี้ใน people.toml",
+    "bot_welcome_keeper": "สวัสดี {name} ส่งรูปใบเสร็จมาได้เลย คุณเป็นผู้ดูแลสมุด ยืนยันรายการลงสมุดได้",
+    "bot_welcome_recorder": "สวัสดี {name} ส่งรูปใบเสร็จมาได้เลย รายการจะส่งให้ผู้ดูแลสมุดตรวจก่อนบันทึก",
+    "bot_welcome_operator": "สวัสดี {name} คุณจะได้รับแจ้งเมื่อมีคนขอใช้งานหรือระบบขัดข้อง",
+    "bot_people_broken": "แก้ไฟล์ people.toml แล้วใช้ไม่ได้ ระบบยังใช้รายชื่อชุดเดิมอยู่: {problem}",
     "preview_stale": "ข้อมูลในหน้า {page} เปลี่ยนไประหว่างที่ตรวจสอบ (อาจมีคนบันทึกพร้อมกัน) ยังไม่ได้บันทึก กรุณาตรวจสอบเซลล์อีกครั้ง",
 }
 
@@ -131,6 +137,12 @@ EN = {
     "people_no_operator": "at least one person must be an operator",
     "txn_missing": "that Transaction no longer exists",
     "txn_settled": "that Transaction is already {state}",
+    "bot_not_allowed": "not allowed yet; your ID is {id}. Send it to the operator to ask for access",
+    "bot_access_request": "access request: {who}, ID {id}. To allow it, add the ID to people.toml",
+    "bot_welcome_keeper": "hello {name}. Send a receipt photo; as a Keeper you can confirm Entries",
+    "bot_welcome_recorder": "hello {name}. Send a receipt photo; a Keeper checks it before it is recorded",
+    "bot_welcome_operator": "hello {name}. You will hear about access requests and system failures",
+    "bot_people_broken": "the edit to people.toml did not take; the previous list is still in force: {problem}",
     "preview_stale": "{page} changed while it was being checked (someone else may have written to it); nothing was written, check the cells again",
 }
 

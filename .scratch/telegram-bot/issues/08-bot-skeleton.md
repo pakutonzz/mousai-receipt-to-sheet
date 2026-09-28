@@ -1,6 +1,6 @@
 # The bot: long polling and the door
 
-Status: ready-for-agent
+Status: ready-for-human
 Blocked by: 06
 
 ## Scope
@@ -19,3 +19,12 @@ Blocked by: 06
 
 - Tests: a stranger, a Recorder and a Keeper each sending `/start`.
 - Started by hand on the Mac, it answers a Keeper and a stranger correctly.
+
+## Comments
+
+**2026-09-28, agent.** The code is done and tested: `src/mousai/bot/core.py`
+(the conversation, no Telegram in it), `src/mousai/bot/polling.py` (the only
+module that imports python-telegram-bot), `scripts/bot.py`. Strangers get their
+ID; operators hear once a day per stranger; groups get silence; a broken
+people-file edit is reported to operators once. The live check in "Done when"
+waits for the bot token in the Mac's `.env` and a real `people.toml` there.
