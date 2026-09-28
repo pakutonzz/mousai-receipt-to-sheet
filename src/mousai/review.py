@@ -45,8 +45,6 @@ PREVIEW_TTL = 30.0
 # every Review.
 BOOKS_TTL = 60.0
 
-NO_DETAIL = "(no detail)"
-
 # What each column holds, so a Review can say "F21 ยอดจ่าย" rather than leaving
 # the reader to remember which letter is which on this Fund's layout.
 COLUMN_LABELS = {
@@ -336,6 +334,9 @@ class Desk:
         """
         if not draft.ready:
             raise PageError(Notice("bad_date"))
+        if not draft.description.strip():
+            # A row with no รายละเอียด says nothing about where the money went.
+            raise PageError(Notice("description_required"))
         template = self.template_for(draft.page)
         try:
             self.check_workbook(draft.workbook_id)
@@ -359,7 +360,7 @@ class Desk:
     def _place(live: Page, draft: Draft) -> Placement:
         return live.place(
             on=draft.on,
-            description=draft.description.strip() or NO_DETAIL,
+            description=draft.description.strip(),
             amount=draft.amount if draft.ready else 0.0,
             requester=draft.requester.strip() or "-",
             note=(draft.note or "").strip() or None,

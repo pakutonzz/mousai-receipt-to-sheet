@@ -97,6 +97,15 @@ class Reviews(unittest.TestCase):
 
 
 class Confirming(unittest.TestCase):
+    def test_a_blank_description_is_never_written(self):
+        desk, service = desk_for()
+        blank = draft(description=" ")
+        key = desk.review(blank).key
+        with self.assertRaises(PageError) as caught:
+            desk.confirm(blank, key)
+        self.assertEqual(caught.exception.notice.code, "description_required")
+        self.assertEqual(service.batches, [])
+
     def test_the_key_of_the_review_writes_those_cells(self):
         desk, service = desk_for()
         key = desk.review(draft()).key
