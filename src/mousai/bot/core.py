@@ -45,6 +45,7 @@ from html import escape
 from typing import Callable
 
 from ..access import Limiter
+from ..describe import failure
 from ..messages import Notice, thai
 from ..page import PageError
 from ..people import People, Person
@@ -75,6 +76,12 @@ QUEUE_SHOWN = 9
 
 # Longest reason kept for a rejection; it goes back to the Recorder verbatim.
 MAX_REASON = 200
+
+# An operator hears about each kind of failure at most once in this long.
+ALERT_EVERY = 3600
+
+# What in a saved Entry's warnings the Keepers are told about.
+TOLD = ("low_capacity", "negative_balance")
 
 
 @dataclass(frozen=True)
@@ -166,6 +173,7 @@ class Bot:
     ):
         self._people = people
         self._asked = Limiter(1, ASK_EVERY, clock)
+        self._alerted = Limiter(1, ALERT_EVERY, clock)
         self._reported: Notice | None = None
         self._desk = desk
         self._store = store
@@ -201,7 +209,28 @@ class Bot:
         try:
             return out + self._converse(person, incoming)
         except SheetsError as error:
-            return out + [Send(incoming.chat_id, thai(error.notice))]
+            said = thai(error.notice)
+            return out + [Send(incoming.chat_id, said)] + self._alert("sheets", said)
+
+    def failed(self, incoming: Incoming, error: Exception) -> list[Send]:
+        """An update the core could not handle: the sender is told nothing was
+        saved, the operators what broke. The caller logs the traceback."""
+        google = type(error).__module__.split(".")[0] in ("googleapiclient", "google", "httplib2")
+        kind = "sheets" if google or isinstance(error, OSError) else "bot"
+        told = [Send(incoming.chat_id, render.say("bot_failed"))] if incoming.private else []
+        return told + self._alert(kind, failure(error))
+
+    def _alert(self, kind: str, detail: str) -> list[Send]:
+        """Tell the operators a part of the system failed, once an hour per part."""
+        if self._alerted.blocked(kind):
+            return []
+        self._alerted.hit(kind)
+        text = render.say("bot_alert", what=render.say(f"alert_{kind}"), detail=detail)
+        return [Send(p.telegram_id, text) for p in self._people.current().operators]
+
+    def _model_trouble(self, model) -> list[Send]:
+        error = getattr(model, "last_error", None)
+        return self._alert("model", error) if error else []
 
     def remember(self, txn_id: int, chat_id: int, message_id: int, kind: str = "review") -> None:
         """A message that shows a Transaction, so later changes can edit it."""
@@ -280,6 +309,11 @@ class Bot:
             self._waiting.pop(chat, None)
             self._later.pop(chat, None)
         reading = self._reader.read_image(incoming.photo.fetch(), incoming.photo.mime)
+        trouble: list[Send] = []
+        codes = [note.code for note in reading.notes]
+        if "ocr_unavailable" in codes:
+            detail = next((n.values.get("text", "") for n in reading.notes if n.code == "detail"), "")
+            trouble = self._alert("ocr", detail or "-")
         draft = self._fresh_draft(person, on=reading.date, amount=reading.amount)
         txn = self._store.add(
             person.telegram_id,
@@ -297,13 +331,14 @@ class Bot:
             elif album.pending:
                 # Already asked for this album: answered once for all.
                 album.pending.append(txn.id)
-                return []
+                return trouble
         if purpose:
-            return self._describe(person, chat, txn.id, purpose)
+            return trouble + self._describe(person, chat, txn.id, purpose)
         if album is not None:
             album.pending.append(txn.id)
         self._waiting[chat] = Waiting(txn.id, "purpose")
-        return [Send(chat, render.say("bot_ask_purpose"), buttons=render.purpose_buttons(txn.id))]
+        ask = Send(chat, render.say("bot_ask_purpose"), buttons=render.purpose_buttons(txn.id))
+        return trouble + [ask]
 
     def _album(self, album_id: str | None) -> Album | None:
         if album_id is None:
@@ -352,13 +387,14 @@ class Bot:
                 album.purpose = purpose
                 ids += [i for i in album.pending if i != txn_id]
                 album.pending.clear()
+        out: list[Send] = []
         for i in ids:
             text = self._receipts.pop(i, "")
             drafted = self._describer.describe(text, purpose) if (text and self._describer) else None
+            out += self._model_trouble(self._describer)
             txn = self._store.get(i)
             if drafted and txn is not None and txn.state == "open":
                 self._store.update(i, replace(txn.draft, description=drafted))
-        out: list[Send] = []
         for i in ids:
             txn = self._store.get(i)
             if txn is not None and txn.state == "open":
@@ -420,28 +456,30 @@ class Bot:
             requesters=known,
             today=self._today(),
         )
+        trouble = self._model_trouble(self._interpreter)
         if changes.empty:
-            return [Send(chat, render.say("bot_use_edit_button"))]
+            return trouble + [Send(chat, render.say("bot_use_edit_button"))]
         if changes.note is not None and txn.photo_unique_id is None:
             changes = replace(changes, note=self._no_receipt_note(changes.note))
         self._store.update(txn.id, changes.apply(draft))
         old = self._review_message(txn.id, chat)
         moved = [Send(chat, render.say("bot_review_moved"), edit=old)] if old else []
         lead = Notice("bot_corrected", {"changes": render.changes_text(changes)})
-        return moved + self._show(person, chat, txn.id, lead=lead)
+        return trouble + moved + self._show(person, chat, txn.id, lead=lead)
 
     def _typed_entry(self, person: Person, chat: int, text: str) -> list[Send]:
         """A spend with no receipt: the same Review, with ไม่มีใบเสร็จ in the Note."""
         entry = self._interpreter.entry(text, self._today())
+        trouble = self._model_trouble(self._interpreter)
         if entry is None:
-            return [Send(chat, render.say("bot_help"))]
+            return trouble + [Send(chat, render.say("bot_help"))]
         draft = self._fresh_draft(person, on=entry.on, amount=entry.amount)
         draft = replace(draft, description=entry.description or "", note=NO_RECEIPT)
         txn = self._store.add(person.telegram_id, draft)
         if entry.date_unclear:
             self._waiting[chat] = Waiting(txn.id, "on")
-            return [Send(chat, render.say("bot_ask_on"))]
-        return self._next(person, chat, txn.id)
+            return trouble + [Send(chat, render.say("bot_ask_on"))]
+        return trouble + self._next(person, chat, txn.id)
 
     @staticmethod
     def _no_receipt_note(typed: str) -> str:
@@ -676,16 +714,38 @@ class Bot:
         draft = txn.draft
         where = dict(page=draft.page, row=placement.row)
         what = dict(description=draft.description, amount=render.money(draft.amount))
-        saved = render.say("bot_saved", **where, **what, balance=render.money(placement.balance))
+        balance = render.money(placement.balance)
+        facts = [thai(w) for w in placement.warnings if w.code in TOLD]
+        saved = "\n".join([render.say("bot_saved", **where, **what, balance=balance), *facts])
         if txn.photo_unique_id is None:
             saved += "\n" + render.say("bot_saved_no_receipt")
         out = [Send(chat, saved, edit=message)]
+        out += self._keepers_told(person, txn, where, what, balance, facts)
         if txn.sender_id != person.telegram_id:
             decided = render.say("bot_decided_confirmed", keeper=person.name, **where)
             out += self._copies(txn, decided, skip=(chat, message))
             outcome = render.say("bot_outcome_confirmed", keeper=person.name, **where, **what)
             out.append(Send(txn.sender_id, outcome))
         return out
+
+    def _keepers_told(self, keeper: Person, txn, where, what, balance, facts) -> list[Send]:
+        """Every other Keeper hears of each saved Entry, and what needs their eye:
+        a Page nearly full, a negative balance, a spend with no receipt.
+
+        Book matters stay with the Keepers; an operator hears only failures.
+        """
+        lines = [render.say("bot_notify_saved", keeper=keeper.name, balance=balance, **where, **what)]
+        if txn.sender_id != keeper.telegram_id:
+            lines.append(render.say("bot_notify_from", recorder=self._name(txn.sender_id)))
+        lines += facts
+        if txn.photo_unique_id is None:
+            lines.append(render.say("bot_review_no_receipt"))
+        text = "\n".join(lines)
+        return [
+            Send(other.telegram_id, text)
+            for other in self._people.current().keepers
+            if other.telegram_id != keeper.telegram_id
+        ]
 
     # -- the Queue ----------------------------------------------------------
 

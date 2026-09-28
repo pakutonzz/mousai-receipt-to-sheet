@@ -105,7 +105,9 @@ class Deciding(Queue):
         for reply in replies:
             by_chat.setdefault(reply.chat_id, []).append(reply)
         # The other Keeper's card now says who did it; it is a photo, so its caption.
-        (owner_card,) = by_chat[OWNER]
+        owner_told, owner_card = by_chat[OWNER]
+        self.assertIsNone(owner_told.edit)
+        self.assertIn("ผู้ช่วย", owner_told.text)
         self.assertEqual(owner_card.edit, self.card(OWNER))
         self.assertTrue(owner_card.caption)
         self.assertIn("มน", owner_card.text)

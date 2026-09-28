@@ -195,6 +195,7 @@ class Model(unittest.TestCase):
         model, post = self.model(fail=True)
         self.assertEqual(said(correct("ผู้เบิก Aor", model)), {"requester": "Aor"})
         self.assertEqual(len(post.payloads), 1)
+        self.assertIn("connection refused", model.last_error)
         entry = model.entry("ค่าน้ำแข็ง 45", TODAY)
         self.assertEqual((entry.amount, entry.description), (45.0, "ค่าน้ำแข็ง"))
 

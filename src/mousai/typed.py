@@ -28,7 +28,7 @@ from dataclasses import dataclass, replace
 from typing import Callable, Protocol
 
 from .bot import fields
-from .describe import DEFAULT_URL, FORBIDDEN, _post_json
+from .describe import DEFAULT_URL, FORBIDDEN, _post_json, failure
 from .templates import EMERGENCY, PETTY_CASH
 
 # One number, with thousands commas and decimals: 45, 1,250, 99.50.
@@ -350,6 +350,8 @@ class OllamaInterpreter:
         self._timeout = timeout
         self._post = post
         self._rules = RuleInterpreter()
+        # Why the last call failed, for the operator; None after a success.
+        self.last_error: str | None = None
 
     def _ask(self, instructions: str, schema: dict, text: str) -> dict:
         payload = {
@@ -362,10 +364,15 @@ class OllamaInterpreter:
                 {"role": "user", "content": f"ข้อความ: {text}"},
             ],
         }
-        reply = self._post(self._url, payload, self._timeout)
-        answer = json.loads(reply["message"]["content"])
-        if not isinstance(answer, dict):
-            raise ValueError("not an object")
+        try:
+            reply = self._post(self._url, payload, self._timeout)
+            answer = json.loads(reply["message"]["content"])
+            if not isinstance(answer, dict):
+                raise ValueError("not an object")
+        except Exception as error:
+            self.last_error = failure(error)
+            raise
+        self.last_error = None
         return answer
 
     def correction(

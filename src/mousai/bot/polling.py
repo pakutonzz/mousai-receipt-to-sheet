@@ -25,7 +25,6 @@ from telegram.ext import (
     filters,
 )
 
-from ..messages import Notice, thai
 from .core import Bot, Incoming, Photo, Send
 
 log = logging.getLogger("mousai.bot")
@@ -227,9 +226,9 @@ def build(token: str, bot: Bot) -> Application:
             # The core blocks on Sheets, Vision and the model; keep it off the
             # event loop.
             replies = await asyncio.to_thread(bot.handle, incoming)
-        except Exception:
+        except Exception as error:
             log.exception("handling an update from %s failed", incoming.user_id)
-            replies = [Send(incoming.chat_id, thai(Notice("bot_failed")))] if incoming.private else []
+            replies = bot.failed(incoming, error)
         sent = await deliver(context.bot, replies, bot.remember)
         # Who, what kind and how many, never what: messages can name patients.
         kind = "button" if incoming.button else "photo" if incoming.photo else "text"

@@ -71,6 +71,8 @@ class Refusals(unittest.TestCase):
     def test_down_means_no_draft(self):
         describer = OllamaDescriber("sealion", post=Ollama(fails=ConnectionRefusedError()))
         self.assertIsNone(describer.describe(RECEIPT, "รับรองลูกค้า"))
+        # Kept for the operator's alert.
+        self.assertIn("ConnectionRefusedError", describer.last_error)
 
     def test_an_answer_outside_the_schema_means_no_draft(self):
         for reply in (

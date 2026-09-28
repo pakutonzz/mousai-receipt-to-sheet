@@ -1,6 +1,6 @@
 # Notifications to Keepers and the operator
 
-Status: ready-for-agent
+Status: resolved
 Blocked by: 10
 
 ## Scope
@@ -14,3 +14,15 @@ Blocked by: 10
 ## Done when
 
 - Tests that each event reaches the right people and nobody else.
+
+## Comments
+
+**2026-09-28, agent.** Done; `tests/test_bot_notify.py`. Each saved Entry
+reaches every other Keeper as a new message (who saved it, what, how much,
+Page, row, balance, and who handed it in for a queued one), with the Page's
+"only N rows left" and a negative balance in the Keepers' existing wording, and
+the no-receipt line. The Keeper who saved it sees the same two warnings in the
+saved message. Operators hear of Vision failing, the model not answering (the
+describer and the typed-text reader now keep `last_error`), Sheets or the
+network failing, and the bot failing on an update; at most once an hour per
+kind. An operator who is not a Keeper never hears book matters.

@@ -146,7 +146,7 @@ class HappyPath(Base):
         review = self.reviewed()
         replies = self.press(self.button([review], "ok:"))
         self.assertEqual(len(written(self.service)), 1)
-        self.assertEqual(len(replies), 1)
+        self.assertEqual([r.chat_id for r in replies], [MON, OWNER])
         self.assertEqual(replies[0].edit, 501)
         self.assertIn("แถว 21", replies[0].text)
         self.assertEqual(replies[0].buttons, ())
