@@ -31,6 +31,14 @@ MAX_LENGTH = 60
 # and every character is prompt the model has to read before it answers.
 MAX_RECEIPT_CHARS = 1500
 
+# Reading the prompt is most of the wait (about 100 tokens a second for the
+# 27B model on the Mac), and loading the model adds seconds more. So it stays
+# loaded all day, and with a context sized for these prompts, which are under
+# 2,000 tokens: Ollama's default of 128k tokens took 31 GB for nothing. Every
+# caller must ask for the same context, or Ollama reloads the model.
+KEEP_ALIVE = "24h"
+CONTEXT = 4096
+
 SCHEMA = {
     "type": "object",
     "properties": {"description": {"type": "string"}},
@@ -128,7 +136,8 @@ class OllamaDescriber:
             "format": SCHEMA,
             # Deterministic, and short: a Description is a few words, so
             # cap the answer rather than wait out a model that rambles.
-            "options": {"temperature": 0, "num_predict": 80},
+            "keep_alive": KEEP_ALIVE,
+            "options": {"temperature": 0, "num_predict": 80, "num_ctx": CONTEXT},
             "messages": [
                 {"role": "system", "content": INSTRUCTIONS},
                 {

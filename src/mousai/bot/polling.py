@@ -11,6 +11,8 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+import time
+from dataclasses import replace
 from pathlib import Path
 from typing import Callable
 
@@ -26,6 +28,7 @@ from telegram.ext import (
     filters,
 )
 
+from ..messages import Notice, thai
 from .core import Bot, Incoming, Photo, Send
 
 log = logging.getLogger("mousai.bot")
@@ -39,6 +42,13 @@ DOWNLOAD_TIMEOUT = 60
 
 # How often the daily Queue reminder is checked for; the core decides.
 REMIND_CHECK = 10 * 60
+
+# A reply slower than this gets a "working on it" first. Reading a receipt
+# takes Vision and the model several seconds; answering a question does not.
+PATIENCE = 1.5
+
+# Telegram shows "typing…" for about five seconds; it is renewed sooner.
+TYPING_EVERY = 4.0
 
 
 def _photo(message, fetch: Callable[[str], bytes] | None) -> Photo | None:
@@ -189,6 +199,69 @@ class Running:
         self.path.unlink(missing_ok=True)
 
 
+async def _quietly(call):
+    """A courtesy to Telegram that may fail without anything else failing."""
+    try:
+        return await call
+    except TelegramError:
+        return None
+
+
+async def _keep_typing(telegram, chat_id: int) -> None:
+    while True:
+        await _quietly(telegram.send_chat_action(chat_id, ChatAction.TYPING))
+        await asyncio.sleep(TYPING_EVERY)
+
+
+def into_placeholder(replies: list[Send], chat_id: int, message_id: int) -> tuple[list[Send], bool]:
+    """The first new text message to the sender takes the place of the
+    "working on it" message, so the answer appears where the wait was."""
+    for i, reply in enumerate(replies):
+        if reply.chat_id == chat_id and reply.edit is None and reply.photo is None:
+            return replies[:i] + [replace(reply, edit=message_id)] + replies[i + 1 :], True
+    return replies, False
+
+
+async def respond(telegram, bot: Bot, incoming: Incoming, *, answer=None, patience=PATIENCE):
+    """Run the core on one update and deliver its replies, showing it is working.
+
+    The core blocks on Sheets, Vision and the model, so it runs on a worker
+    thread. Meanwhile "typing…" stays up, and once it has taken longer than
+    `patience` the sender sees a message saying so (a short notice, for a
+    button), which the answer then replaces. `answer` is a button's
+    callback-query answer, called exactly once. Returns (sent, replies).
+    """
+    work = asyncio.ensure_future(asyncio.to_thread(bot.handle, incoming))
+    typing = asyncio.ensure_future(_keep_typing(telegram, incoming.chat_id)) if incoming.private else None
+    placeholder = None
+    try:
+        done, _ = await asyncio.wait({work}, timeout=patience)
+        slow = not done and incoming.private
+        if answer is not None:
+            # Also stops the button's spinner.
+            await _quietly(answer(text=thai(Notice("bot_working")) if slow else None))
+        elif slow:
+            code = "bot_working_photo" if incoming.photo else "bot_working_text"
+            placeholder = await _quietly(
+                telegram.send_message(chat_id=incoming.chat_id, text=thai(Notice(code)))
+            )
+        try:
+            replies = await work
+        except Exception as error:
+            log.exception("handling an update from %s failed", incoming.user_id)
+            replies = bot.failed(incoming, error)
+    finally:
+        if typing is not None:
+            typing.cancel()
+    if placeholder is not None:
+        replies, used = into_placeholder(replies, incoming.chat_id, placeholder.message_id)
+        if not used:
+            await _quietly(
+                telegram.delete_message(chat_id=incoming.chat_id, message_id=placeholder.message_id)
+            )
+    return await deliver(telegram, replies, bot.remember), len(replies)
+
+
 def build(token: str, bot: Bot, running: Running | None = None) -> Application:
     async def remind(app: Application) -> None:
         """Ask the core every few minutes whether the daily reminder is due."""
@@ -239,35 +312,22 @@ def build(token: str, bot: Bot, running: Running | None = None) -> Application:
         incoming = incoming_from(update, fetch)
         if incoming is None:
             return
-        if update.callback_query is not None:
-            # Stops the button's spinner; the answer itself is the edit.
-            try:
-                await update.callback_query.answer()
-            except TelegramError:
-                pass
-        if incoming.private and incoming.button is None:
-            # Reading a receipt or a typed message can take the model seconds.
-            try:
-                await context.bot.send_chat_action(incoming.chat_id, ChatAction.TYPING)
-            except TelegramError:
-                pass
-        try:
-            # The core blocks on Sheets, Vision and the model; keep it off the
-            # event loop.
-            replies = await asyncio.to_thread(bot.handle, incoming)
-        except Exception as error:
-            log.exception("handling an update from %s failed", incoming.user_id)
-            replies = bot.failed(incoming, error)
-        sent = await deliver(context.bot, replies, bot.remember)
-        # Who, what kind and how many, never what: messages can name patients.
+        query = update.callback_query
+        started = time.monotonic()
+        sent, total = await respond(
+            context.bot, bot, incoming, answer=query.answer if query is not None else None
+        )
+        # Who, what kind, how many and how long, never what: messages can
+        # name patients.
         kind = "button" if incoming.button else "photo" if incoming.photo else "text"
         log.info(
-            "%s from %s (%s): %d of %d replies sent",
+            "%s from %s (%s): %d of %d replies sent in %.1fs",
             kind,
             incoming.user_id,
             "private" if incoming.private else "group",
             sent,
-            len(replies),
+            total,
+            time.monotonic() - started,
         )
 
     async def on_error(update: object, context: ContextTypes.DEFAULT_TYPE) -> None:

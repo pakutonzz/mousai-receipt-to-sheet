@@ -28,7 +28,7 @@ from dataclasses import dataclass, replace
 from typing import Callable, Protocol
 
 from .bot import fields
-from .describe import DEFAULT_URL, FORBIDDEN, _post_json, failure
+from .describe import CONTEXT, DEFAULT_URL, FORBIDDEN, KEEP_ALIVE, _post_json, failure
 from .templates import EMERGENCY, PETTY_CASH
 
 # One number, with thousands commas and decimals: 45, 1,250, 99.50.
@@ -358,7 +358,8 @@ class OllamaInterpreter:
             "model": self.model,
             "stream": False,
             "format": schema,
-            "options": {"temperature": 0, "num_predict": 160},
+            "keep_alive": KEEP_ALIVE,
+            "options": {"temperature": 0, "num_predict": 160, "num_ctx": CONTEXT},
             "messages": [
                 {"role": "system", "content": instructions},
                 {"role": "user", "content": f"ข้อความ: {text}"},
