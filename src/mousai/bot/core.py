@@ -271,9 +271,10 @@ class Bot:
         if text.startswith("/"):
             self._waiting.pop(chat, None)
             return [Send(chat, thai(self._welcome(person)))]
-        waiting = self._waiting.pop(chat, None)
         if not text:
+            # A sticker or a voice note: the question asked, if any, still stands.
             return [Send(chat, render.say("bot_help"))]
+        waiting = self._waiting.pop(chat, None)
         if waiting:
             return self._answer(person, chat, waiting, text)
         # With a Review open, typing corrects it; otherwise it is a spend
@@ -396,8 +397,10 @@ class Bot:
         out: list[Send] = []
         for i in ids:
             text = self._receipts.pop(i, "")
-            drafted = self._describer.describe(text, purpose) if (text and self._describer) else None
-            out += self._model_trouble(self._describer)
+            drafted = None
+            if text and self._describer:
+                drafted = self._describer.describe(text, purpose)
+                out += self._model_trouble(self._describer)
             txn = self._store.get(i)
             if drafted and txn is not None and txn.state == "open":
                 self._store.update(i, replace(txn.draft, description=drafted))
