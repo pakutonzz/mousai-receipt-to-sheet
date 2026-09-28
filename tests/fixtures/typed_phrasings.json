@@ -1,0 +1,38 @@
+{
+  "_about": "Phrasings for ticket 05, written for it: no clinic records. Today is 2026-08-20. Pages and Requesters are invented. An expected field absent from 'expect' must come back unchanged; 'contains' checks a Description holds that word.",
+  "today": "2026-08-20",
+  "pages": ["เงินสดย่อย5", "เงินสดย่อย6", "เงินฉุกเฉิน3"],
+  "requesters": ["Aor", "หมอเก่ง", "มน"],
+  "corrections": [
+    {"text": "จำนวนเงินผิด 120", "expect": {"amount": 120}},
+    {"text": "ใส่เงินฉุกเฉิน", "expect": {"page": "เงินฉุกเฉิน3"}},
+    {"text": "ผู้เบิก Aor", "expect": {"requester": "Aor"}},
+    {"text": "ยอดจริง 1,250 บาท", "expect": {"amount": 1250}},
+    {"text": "ของเมื่อวานนะคะ", "expect": {"on": "2026-08-19"}},
+    {"text": "วันที่ 3 ส.ค.", "expect": {"on": "2026-08-03"}},
+    {"text": "เปลี่ยนเป็นหน้าเงินสดย่อย5", "expect": {"page": "เงินสดย่อย5"}},
+    {"text": "รายละเอียดแก้เป็น ค่าน้ำดื่มใช้ในคลินิก", "expect": {"description": "ค่าน้ำดื่มใช้ในคลินิก"}},
+    {"text": "หมายเหตุ จ่ายด้วยเงินทอน", "expect": {"note": "จ่ายด้วยเงินทอน"}},
+    {"text": "ลบหมายเหตุออก", "expect": {"note": ""}},
+    {"text": "คนเบิกคือหมอเก่ง", "expect": {"requester": "หมอเก่ง"}},
+    {"text": "ขอบคุณค่ะ", "expect": {}},
+    {"text": "เงินผิด ต้องเป็น 99.50", "expect": {"amount": 99.5}},
+    {"text": "ใส่ฉุกเฉิน ยอด 300", "expect": {"page": "เงินฉุกเฉิน3", "amount": 300}},
+    {"text": "85 บาทค่ะ ไม่ใช่ 58", "expect": {"amount": 85}},
+    {"text": "โอเคค่ะ", "expect": {}}
+  ],
+  "entries": [
+    {"text": "ค่าน้ำแข็ง 45", "expect": {"amount": 45, "on": "2026-08-20", "contains": "น้ำแข็ง"}},
+    {"text": "ค่าส่งของ 60 เมื่อวาน", "expect": {"amount": 60, "on": "2026-08-19", "contains": "ส่งของ"}},
+    {"text": "ซื้อน้ำแข็งไป 45 บาท", "expect": {"amount": 45, "on": "2026-08-20", "contains": "น้ำแข็ง"}},
+    {"text": "จ่ายค่าวินไปส่งยา 80 บาท", "expect": {"amount": 80, "on": "2026-08-20", "contains": "วิน"}},
+    {"text": "ค่าจอดรถ 40 เมื่อวานซืน", "expect": {"amount": 40, "on": "2026-08-18", "contains": "จอดรถ"}},
+    {"text": "เติมน้ำมันรถ 500 วันที่ 18/8", "expect": {"amount": 500, "on": "2026-08-18", "contains": "น้ำมัน"}},
+    {"text": "ค่ากระดาษ A4 2 รีม 250", "expect": {"amount": 250, "on": "2026-08-20", "contains": "กระดาษ"}},
+    {"text": "ทิปคนส่งของ 20", "expect": {"amount": 20, "on": "2026-08-20", "contains": "ทิป"}},
+    {"text": "ค่าแท็กซี่ไปธนาคาร 150", "expect": {"amount": 150, "on": "2026-08-20", "contains": "แท็กซี่"}},
+    {"text": "ค่ากาแฟ 2 แก้ว 110 บาท", "expect": {"amount": 110, "on": "2026-08-20", "contains": "กาแฟ"}},
+    {"text": "ค่าถ่ายเอกสาร 35 บาท 3 ส.ค.", "expect": {"amount": 35, "on": "2026-08-03", "contains": "เอกสาร"}},
+    {"text": "สวัสดีครับ", "expect": null}
+  ]
+}

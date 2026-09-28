@@ -21,6 +21,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from fastapi.testclient import TestClient  # noqa: E402
 
 from mousai.page import column_index  # noqa: E402
+from mousai.describe import NullDescriber  # noqa: E402
 from mousai.messages import Notice  # noqa: E402
 from mousai.receipt import Reading  # noqa: E402
 from mousai.sheets import CONFIG_SHEET, Workbook, WorkbookRef  # noqa: E402
@@ -68,7 +69,7 @@ class Clock:
         return self.now
 
 
-def build(reading=None, with_config=False, grids=None, clock=None):
+def build(reading=None, with_config=False, grids=None, clock=None, describer=None):
     names = [PAGE, EMERGENCY_PAGE, "ย่อย", "ใบรับรองแทนสดย่อย5"]
     service = FakeService(
         grids or {n: grid_for(n) for n in names},
@@ -78,7 +79,9 @@ def build(reading=None, with_config=False, grids=None, clock=None):
         service.ids[CONFIG_SHEET] = 90
         service.grids[CONFIG_SHEET] = [["fund", "active_page"], ["เงินสดย่อย", PAGE]]
     reader = FakeReader(reading)
-    app = create_app(FakeSheets(service), reader, clock=clock or Clock())
+    app = create_app(
+        FakeSheets(service), reader, clock=clock or Clock(), describer=describer or NullDescriber()
+    )
     return TestClient(app), service, reader
 
 
@@ -544,6 +547,60 @@ class ReceiptDates(unittest.TestCase):
         client, _, _ = build()
         response = client.post("/confirm", data=fields(entry_date="", key="stale"))
         self.assertEqual(rendered_value(response.text, "entry_date"), "")
+
+
+class DraftedDescription(unittest.TestCase):
+    """The web page asks the same local model as the bot (ticket 15)."""
+
+    class Model:
+        name = "fake"
+
+        def __init__(self, answer="ค่าขนมปังและนม"):
+            self.answer = answer
+            self.calls = []
+
+        def describe(self, receipt_text, purpose):
+            self.calls.append((receipt_text, purpose))
+            return self.answer
+
+    def read(self, client):
+        return client.post("/api/read", files={"receipt": ("bill.jpg", JPEG, "image/jpeg")}).json()
+
+    def test_a_photo_brings_a_drafted_description(self):
+        model = self.Model()
+        client, _, _ = build(Reading(amount=45.0, text="ขนมปังโฮลวีท\nนมสด"), describer=model)
+        self.assertEqual(self.read(client)["description"], "ค่าขนมปังและนม")
+        # Nobody said why on the web page, so only the what is drafted.
+        self.assertEqual(model.calls, [("ขนมปังโฮลวีท\nนมสด", None)])
+
+    def test_no_model_leaves_it_empty(self):
+        client, _, _ = build(Reading(amount=45.0, text="ขนมปัง", description="7-ELEVEN"))
+        self.assertIsNone(self.read(client)["description"])
+
+    def test_nothing_read_nothing_asked(self):
+        model = self.Model()
+        client, _, _ = build(Reading(notes=[Notice("ocr_no_text")]), describer=model)
+        self.assertIsNone(self.read(client)["description"])
+        self.assertEqual(model.calls, [])
+
+    def test_the_field_is_tagged_and_required(self):
+        client, _, _ = build()
+        page = client.get("/").text
+        self.assertIn('data-tag-for="description"', page)
+        field = page[page.index('id="description"') :]
+        self.assertIn("required", field[: field.index(">")])
+
+    def test_a_blank_description_is_refused_and_nothing_written(self):
+        client, service, _ = build()
+        response = confirm(client, description="  ")
+        self.assertEqual(response.status_code, 400)
+        self.assertIn("กรอกรายละเอียดก่อนบันทึก", response.text)
+        self.assertTrue(nothing_written(service))
+
+    def test_no_english_placeholder_is_ever_shown(self):
+        client, _, _ = build()
+        cells = preview(client, description="")["cells"]
+        self.assertNotIn("(no detail)", [c["value"] for c in cells])
 
 
 class Confirm(unittest.TestCase):

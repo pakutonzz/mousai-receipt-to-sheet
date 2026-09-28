@@ -64,8 +64,24 @@ python scripts/serve.py
 
 ### 5. คำสั่ง start Telegram bot
 
-🚧 **กำลังพัฒนา (in progress)** ยังไม่มีโค้ดของ bot และยังไม่มีคำสั่ง start
-ใน `.env.example` เตรียมช่อง `TELEGRAM_BOT_TOKEN` ไว้แล้ว (ตอนนี้ยังไม่มีโค้ดส่วนไหนอ่านค่านี้)
+```
+python scripts/bot.py
+```
+
+ต้องมี `TELEGRAM_BOT_TOKEN` ใน `.env` (สร้าง bot กับ @BotFather) และไฟล์ `people.toml`
+(คัดลอกจาก `people.example.toml` แล้วใส่รหัส Telegram ของแต่ละคน) บน Mac mini bot รันเป็น
+service `com.mousai.bot` อยู่แล้ว ดูหัวข้อ "On the Mac mini" ด้านล่าง
+
+ผู้ดูแลสมุด (Keeper) ส่งรูปใบเสร็จ ใส่ข้อความใต้รูปว่าใช้เพื่ออะไร bot อ่านยอดเงินกับวันที่
+ร่างรายละเอียดด้วยโมเดลบนเครื่อง แล้วส่งหน้าตรวจสอบกลับมาพร้อมปุ่ม ยืนยันบันทึก · แก้ไข · ยกเลิก
+ไม่มีอะไรถูกเขียนลงชีตจนกว่าจะกดยืนยัน ระหว่างที่รายการเปิดอยู่ พิมพ์แก้ได้เลย เช่น
+`จำนวนเงินผิด 120` หรือ `ใส่เงินฉุกเฉิน` ส่วนค่าใช้จ่ายที่ไม่มีใบเสร็จ พิมพ์มาเป็นข้อความ เช่น
+`ค่าน้ำแข็ง 45` ช่องหมายเหตุจะได้ **ไม่มีใบเสร็จ**
+
+ผู้บันทึก (Recorder) ที่ไม่ใช่ผู้ดูแลสมุด กด **ส่งให้ตรวจ** แทนการยืนยัน รายการจะเข้าคิว และผู้ดูแลสมุด
+ทุกคนได้รับการ์ดพร้อมรูปใบเสร็จ กด เปิดดู แล้วยืนยันหรือปฏิเสธ (พร้อมเหตุผล) คนแรกที่กดเป็นคนตัดสิน
+ผู้บันทึกจะได้รับแจ้งผลทุกครั้ง พิมพ์ `/คิว` เพื่อดูรายการที่รออยู่ และถ้ายังมีรายการค้าง
+ผู้ดูแลสมุดจะได้รับการเตือนวันละครั้งตอน 9 โมง
 
 ### 6. โครงสร้าง Google Sheet / columns ที่ใช้
 
@@ -102,7 +118,6 @@ python scripts/serve.py
 **Long polling** — bot เป็นฝ่ายไปดึงข้อความจาก Telegram เอง จึงไม่มีพอร์ตไหนบน Mac mini
 ที่เปิดรับการเชื่อมต่อจากภายนอก ข้อความที่ส่งมาตอนเครื่องปิดจะรออยู่ที่ Telegram นานสุด 24 ชั่วโมง
 รายละเอียดทั้งหมดอยู่ใน [.scratch/telegram-bot/spec.md](.scratch/telegram-bot/spec.md)
-(🚧 ตัว bot ยังอยู่ระหว่างพัฒนา)
 
 ## Running it
 
@@ -154,6 +169,28 @@ ssh mac 'cd /Users/Shared/mousai-receipt-to-sheet && git pull --ff-only && launc
 The log is `~/Library/Logs/mousai/web.log` on the Mac. `.env`, the service
 account key and `tests/fixtures/baseline.json` are copied there by hand over SSH
 and readable only by the Mac's user; none of them is in git.
+
+The Telegram bot runs beside it as `com.mousai.bot`, the same way: started at
+login, restarted within ten seconds if it crashes, logging to
+`~/Library/Logs/mousai/bot.log` (who sent what kind of message and how many
+replies went out, never what the messages said). It needs `people.toml` and
+`TELEGRAM_BOT_TOKEN` in `.env`, both on the Mac only, and keeps its Queue in
+`mousai.db` beside the code. To update both and restart them:
+
+```
+ssh mac 'cd /Users/Shared/mousai-receipt-to-sheet && git pull --ff-only && launchctl kickstart -k gui/$(id -u)/com.mousai.web && launchctl kickstart -k gui/$(id -u)/com.mousai.bot'
+```
+
+To follow the bot's log: `ssh mac 'tail -f ~/Library/Logs/mousai/bot.log'`.
+A restart like the one above is a clean stop. If the bot instead stopped some
+other way (a crash, a forced kill, the power), the operators in `people.toml`
+are told when it comes back. An edit to `people.toml` takes effect without a
+restart.
+
+Both services, and Ollama, belong to the Mac's `rukz` account and start when it
+logs in. After a reboot that happens only if the Mac logs into `rukz`
+automatically (System Settings → Users & Groups → Automatically log in as);
+otherwise nothing answers until someone logs in as `rukz`.
 
 ### Reaching it from outside the clinic wifi
 

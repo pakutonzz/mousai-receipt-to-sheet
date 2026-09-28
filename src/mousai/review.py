@@ -45,8 +45,6 @@ PREVIEW_TTL = 30.0
 # every Review.
 BOOKS_TTL = 60.0
 
-NO_DETAIL = "(no detail)"
-
 # What each column holds, so a Review can say "F21 ยอดจ่าย" rather than leaving
 # the reader to remember which letter is which on this Fund's layout.
 COLUMN_LABELS = {
@@ -225,6 +223,7 @@ class Desk:
         self._clock = clock
         self._pages: dict[tuple[str, str], tuple[float, Page]] = {}
         self._books: tuple[float, list] | None = None
+        self._requesters: dict[str, tuple[float, list[str]]] = {}
 
     # -- which Workbooks and Pages ------------------------------------------
 
@@ -241,6 +240,33 @@ class Desk:
     def check_workbook(self, workbook_id: str) -> None:
         if workbook_id not in {book.id for book in self.workbooks()}:
             raise SheetsError(Notice("unknown_workbook"))
+
+    def workbook(self, workbook_id: str):
+        """An accepted Workbook, for reading its Pages, Active Pages and names."""
+        self.check_workbook(workbook_id)
+        return self._sheets().open(workbook_id)
+
+    def requesters(self, workbook_id: str) -> list[str]:
+        """Names already in a Workbook's ผู้เบิก column. Reads every Page, so
+        cached like the Workbook list."""
+        now = self._clock()
+        hit = self._requesters.get(workbook_id)
+        if hit is not None and now - hit[0] < BOOKS_TTL:
+            return hit[1]
+        names = self.workbook(workbook_id).requesters()
+        self._requesters[workbook_id] = (now, names)
+        return names
+
+    def active_page(self, workbook_id: str, fund: str) -> str | None:
+        """The Page new Entries of this Fund go to, as remembered in the Workbook."""
+        return self.workbook(workbook_id).active_page(fund)
+
+    def make_active(self, workbook_id: str, page: str) -> str:
+        """Remember the Page as its Fund's Active Page: the web page's switch.
+        Returns the Fund."""
+        template = self.template_for(page)
+        self.workbook(workbook_id).remember_page(template.fund, page)
+        return template.fund
 
     @staticmethod
     def template_for(page: str) -> Template:
@@ -308,6 +334,9 @@ class Desk:
         """
         if not draft.ready:
             raise PageError(Notice("bad_date"))
+        if not draft.description.strip():
+            # A row with no รายละเอียด says nothing about where the money went.
+            raise PageError(Notice("description_required"))
         template = self.template_for(draft.page)
         try:
             self.check_workbook(draft.workbook_id)
@@ -331,7 +360,7 @@ class Desk:
     def _place(live: Page, draft: Draft) -> Placement:
         return live.place(
             on=draft.on,
-            description=draft.description.strip() or NO_DETAIL,
+            description=draft.description.strip(),
             amount=draft.amount if draft.ready else 0.0,
             requester=draft.requester.strip() or "-",
             note=(draft.note or "").strip() or None,

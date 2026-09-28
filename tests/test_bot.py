@@ -155,6 +155,58 @@ except ImportError:
     HAVE_TELEGRAM = False
 
 
+class FakeTelegram:
+    """send_message and edit_message_text, recorded; message ids from 501."""
+
+    def __init__(self, unreachable=(), refuse_edits=False):
+        self.unreachable = set(unreachable)
+        self.refuse_edits = refuse_edits
+        self.sent: list[tuple[int, str]] = []
+        self.edited: list[tuple[int, int, str]] = []
+        self.markups: list = []
+        self.photos: list[tuple[int, str, str]] = []
+        self.captions: list[tuple[int, int, str]] = []
+        self.next_id = 500
+
+    async def send_message(self, chat_id, text, parse_mode=None, reply_markup=None):
+        from types import SimpleNamespace
+
+        from telegram.error import BadRequest
+
+        if chat_id in self.unreachable:
+            raise BadRequest("Chat not found")
+        self.sent.append((chat_id, text))
+        self.markups.append(reply_markup)
+        self.next_id += 1
+        return SimpleNamespace(message_id=self.next_id)
+
+    async def send_photo(self, chat_id, photo, caption=None, parse_mode=None, reply_markup=None):
+        from types import SimpleNamespace
+
+        self.photos.append((chat_id, photo, caption))
+        self.markups.append(reply_markup)
+        self.next_id += 1
+        return SimpleNamespace(message_id=self.next_id)
+
+    async def edit_message_caption(
+        self, chat_id, message_id, caption=None, parse_mode=None, reply_markup=None
+    ):
+        from types import SimpleNamespace
+
+        self.captions.append((chat_id, message_id, caption))
+        return SimpleNamespace(message_id=message_id)
+
+    async def edit_message_text(self, text, chat_id, message_id, parse_mode=None, reply_markup=None):
+        from types import SimpleNamespace
+
+        from telegram.error import BadRequest
+
+        if self.refuse_edits:
+            raise BadRequest("Message to edit not found")
+        self.edited.append((chat_id, message_id, text))
+        return SimpleNamespace(message_id=message_id)
+
+
 @unittest.skipUnless(HAVE_TELEGRAM, "python-telegram-bot is not installed")
 class TelegramSide(unittest.TestCase):
     """Only the translation in; nothing here touches the network."""
@@ -190,6 +242,159 @@ class TelegramSide(unittest.TestCase):
         from mousai.bot.polling import incoming_from
 
         self.assertFalse(incoming_from(self.update(chat_type="group")).private)
+
+    def test_one_unreachable_chat_does_not_silence_the_rest(self):
+        """A bot cannot message someone who never messaged it; the others
+        must still hear."""
+        import asyncio
+
+        from mousai.bot.core import Send
+        from mousai.bot.polling import deliver
+
+        telegram = FakeTelegram(unreachable={444})
+        replies = [Send(99, "your id"), Send(444, "request"), Send(8880, "request")]
+        with self.assertLogs("mousai.bot", level="WARNING") as logs:
+            sent = asyncio.run(deliver(telegram, replies))
+        self.assertEqual(sent, 2)
+        self.assertEqual([chat for chat, _ in telegram.sent], [99, 8880])
+        self.assertIn("444", logs.output[0])
+
+    def test_a_press_becomes_an_incoming_button(self):
+        from telegram import Update
+
+        from mousai.bot.polling import incoming_from
+
+        update = Update.de_json(
+            {
+                "update_id": 2,
+                "callback_query": {
+                    "id": "q1",
+                    "chat_instance": "c",
+                    "data": "ok:1:abc",
+                    "from": {"id": 42, "is_bot": False, "first_name": "มน"},
+                    "message": {
+                        "message_id": 77,
+                        "date": 1_800_000_000,
+                        "chat": {"id": 42, "type": "private"},
+                        "text": "review",
+                    },
+                },
+            },
+            None,
+        )
+        incoming = incoming_from(update)
+        self.assertEqual(
+            (incoming.chat_id, incoming.user_id, incoming.button, incoming.message_id),
+            (42, 42, "ok:1:abc", 77),
+        )
+
+    def test_a_photo_takes_the_largest_size_and_its_caption(self):
+        from telegram import Update
+
+        from mousai.bot.polling import incoming_from
+
+        update = Update.de_json(
+            {
+                "update_id": 3,
+                "message": {
+                    "message_id": 6,
+                    "date": 1_800_000_000,
+                    "chat": {"id": 42, "type": "private"},
+                    "from": {"id": 42, "is_bot": False, "first_name": "มน"},
+                    "caption": "รับรองลูกค้า",
+                    "media_group_id": "album-7",
+                    "photo": [
+                        {"file_id": "small", "file_unique_id": "u-small", "width": 90, "height": 160},
+                        {"file_id": "big", "file_unique_id": "u-big", "width": 720, "height": 1280},
+                    ],
+                },
+            },
+            None,
+        )
+        fetched = []
+        incoming = incoming_from(update, lambda file_id: fetched.append(file_id) or b"jpeg")
+        self.assertEqual(incoming.text, "รับรองลูกค้า")
+        self.assertEqual((incoming.photo.file_id, incoming.photo.unique_id), ("big", "u-big"))
+        self.assertEqual(incoming.album, "album-7")
+        # Nothing is downloaded until the core decides the sender may send.
+        self.assertEqual(fetched, [])
+        self.assertEqual(incoming.photo.fetch(), b"jpeg")
+        self.assertEqual(fetched, ["big"])
+
+    def test_edits_buttons_and_remembering(self):
+        import asyncio
+
+        from mousai.bot.core import Send
+        from mousai.bot.polling import deliver
+        from mousai.bot.render import Button
+
+        telegram = FakeTelegram()
+        remembered = []
+        buttons = ((Button("ยืนยันบันทึก", "ok:1:k"),), ())
+        replies = [
+            Send(42, "<b>review</b>", buttons=buttons, html=True, remember=1),
+            Send(42, "saved", edit=501),
+        ]
+        sent = asyncio.run(deliver(telegram, replies, lambda *a: remembered.append(a)))
+        self.assertEqual(sent, 2)
+        self.assertEqual(remembered, [(1, 42, 501, "review")])
+        markup = telegram.markups[0]
+        self.assertEqual([[b.callback_data for b in row] for row in markup.inline_keyboard], [["ok:1:k"]])
+        self.assertEqual(telegram.edited, [(42, 501, "saved")])
+
+    def test_queue_cards_are_photos_and_their_captions_are_edited(self):
+        import asyncio
+
+        from mousai.bot.core import Send
+        from mousai.bot.polling import deliver
+
+        telegram = FakeTelegram()
+        remembered = []
+        replies = [
+            Send(42, "waiting #1", photo="file-1", remember=1, kind="photo_card"),
+            Send(43, "saved by มน", edit=77, caption=True),
+        ]
+        asyncio.run(deliver(telegram, replies, lambda *a: remembered.append(a)))
+        self.assertEqual(telegram.photos, [(42, "file-1", "waiting #1")])
+        self.assertEqual(remembered, [(1, 42, 501, "photo_card")])
+        self.assertEqual(telegram.captions, [(43, 77, "saved by มน")])
+        self.assertEqual(telegram.sent, [])
+
+    def test_an_edit_telegram_refuses_is_sent_new(self):
+        import asyncio
+
+        from mousai.bot.core import Send
+        from mousai.bot.polling import deliver
+
+        telegram = FakeTelegram(refuse_edits=True)
+        remembered = []
+        replies = [Send(42, "review again", edit=9, remember=1)]
+        with self.assertLogs("mousai.bot", level="INFO"):
+            sent = asyncio.run(deliver(telegram, replies, lambda *a: remembered.append(a)))
+        self.assertEqual(sent, 1)
+        self.assertEqual(telegram.sent, [(42, "review again")])
+        # The new message is now the Review to redraw.
+        self.assertEqual(remembered, [(1, 42, 501, "review")])
+
+    def test_a_run_that_never_stopped_is_noticed_at_the_next_start(self):
+        import datetime as dt
+        import tempfile
+
+        from mousai.bot.polling import Running
+
+        with tempfile.TemporaryDirectory() as folder:
+            running = Running(Path(folder) / "mousai.db.running")
+            self.assertIsNone(running.start(dt.datetime(2026, 9, 28, 9, 0)))
+            running.stop()
+            # A clean stop: the next start has nothing to report.
+            self.assertIsNone(running.start(dt.datetime(2026, 9, 28, 10, 0)))
+            # No stop this time: a crash, a kill, the power.
+            self.assertEqual(running.start(dt.datetime(2026, 9, 28, 11, 0)), "2026-09-28 10:00")
+
+    def test_the_operators_hear_the_bot_is_back(self):
+        replies = Bot(FakePeopleFile()).restarted("2026-09-28 10:00")
+        self.assertEqual({r.chat_id for r in replies}, {OWNER, OPERATOR})
+        self.assertIn("2026-09-28 10:00", replies[0].text)
 
     def test_the_application_builds_without_the_network(self):
         from mousai.bot.polling import build

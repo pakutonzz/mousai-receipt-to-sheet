@@ -129,8 +129,10 @@ class Store:
     def __init__(self, path: Path | str, clock=time.time):
         self._clock = clock
         # One process, one connection. Autocommit, with explicit transactions
-        # where two statements must land together.
-        self._db = sqlite3.connect(str(path), isolation_level=None)
+        # where two statements must land together. The bot handles one update
+        # at a time but on whichever worker thread is free, so the connection
+        # is shared across threads, never used by two at once.
+        self._db = sqlite3.connect(str(path), isolation_level=None, check_same_thread=False)
         self._db.row_factory = sqlite3.Row
         self._db.execute("PRAGMA foreign_keys = ON")
         self._db.executescript(SCHEMA)
@@ -155,6 +157,19 @@ class Store:
             "SELECT * FROM txn WHERE state = 'queued' ORDER BY created_at, id"
         ).fetchall()
         return [self._transaction(r) for r in rows]
+
+    def reviews_in(self, chat_id: int, limit: int = 20) -> list[int]:
+        """Transactions whose Reviews went to this chat, newest first."""
+        rows = self._db.execute(
+            "SELECT txn_id FROM shown WHERE chat_id = ? AND kind = 'review'"
+            " ORDER BY rowid DESC LIMIT ?",
+            (chat_id, limit),
+        ).fetchall()
+        seen: list[int] = []
+        for row in rows:
+            if row["txn_id"] not in seen:
+                seen.append(row["txn_id"])
+        return seen
 
     def shown_in(self, txn_id: int) -> list[tuple[int, int, str]]:
         """Every chat message showing this Transaction: (chat, message, kind)."""

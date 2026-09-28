@@ -160,9 +160,16 @@
   </div>
 
   <div class="field" data-field="description">
-    <label for="description">รายละเอียด</label>
+    <div class="field-head">
+      <label for="description">รายละเอียด</label>
+      <span class="tag" data-tag-for="description" hidden>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 2v20l2-1 2 1 2-1 2 1 2-1 2 1 2-1 2 1V2l-2 1-2-1-2 1-2-1-2 1-2-1-2 1Z"/><path d="M16 8h-6"/><path d="M16 12H8"/></svg>
+        ร่างจากใบเสร็จ
+      </span>
+    </div>
     <input type="text" id="description" name="description" class="input" value="{{ description or '' }}"
-           placeholder="เช่น ค่าขนมปังรับรองลูกค้า">
+           placeholder="เช่น ค่าขนมปังรับรองลูกค้า" maxlength="120" required>
+    <div class="hint">บอกว่าซื้ออะไร เพื่ออะไร</div>
   </div>
 
   <fieldset>
@@ -310,8 +317,14 @@
     return response.json();
   }
 
+  // A Description is required. The form's own check cannot help here: the
+  // only submit sits in the modal sheet, where the empty field is out of reach.
+  function described() {
+    return $("description").value.trim() !== "";
+  }
+
   function sync() {
-    var ready = reading === 0 && shownVersion === version && !!key.value;
+    var ready = reading === 0 && shownVersion === version && !!key.value && described();
     review.disabled = !ready;
     if (!ready && dialog.open) dialog.close();
   }
@@ -320,7 +333,8 @@
 
   function bar(mode, text) {
     $("bar-status").hidden = mode !== "busy" && mode !== "idle";
-    $("bar-spinner").hidden = mode !== "busy";
+    // An <svg> has no `hidden` property, so the spinner is hidden by style.
+    $("bar-spinner").style.display = mode === "busy" ? "" : "none";
     $("bar-status-text").textContent = mode === "busy" ? "กำลังคำนวณ…" : (text || "");
     $("bar-summary").hidden = mode !== "ready";
     $("bar-error").hidden = mode !== "error";
@@ -368,7 +382,9 @@
     stats(data.row, data.previous_balance, data.free_rows);
     key.value = data.ready ? data.key : "";
     latest = data.ready ? data : null;
-    if (data.ready) {
+    if (data.ready && !described()) {
+      bar("idle", "กรอกรายละเอียดก่อนบันทึก");
+    } else if (data.ready) {
       $("bar-where").textContent = "แถว " + data.row + " · คงเหลือใหม่";
       $("bar-balance").textContent = money(data.balance);
       $("bar-balance").classList.toggle("negative", data.balance < 0);

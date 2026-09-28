@@ -28,3 +28,10 @@ module that imports python-telegram-bot), `scripts/bot.py`. Strangers get their
 ID; operators hear once a day per stranger; groups get silence; a broken
 people-file edit is reported to operators once. The live check in "Done when"
 waits for the bot token in the Mac's `.env` and a real `people.toml` there.
+
+**2026-09-28, agent.** Live on the Mac as the LaunchAgent `com.mousai.bot`.
+A first message from an unlisted account got its Telegram ID back. The access
+request to the placeholder operator failed with "Chat not found", which showed
+that one failed send aborted the rest of the batch; sends are now independent
+and a failure is one warning line. Left: a message from a listed Keeper after
+the people file has real IDs.

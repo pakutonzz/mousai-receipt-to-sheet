@@ -86,6 +86,12 @@ def clean(draft: str) -> str | None:
     return text
 
 
+def failure(error: Exception) -> str:
+    """One short line naming what went wrong, for the operator."""
+    text = f"{type(error).__name__}: {error}"
+    return text[:160] + ("…" if len(text) > 160 else "")
+
+
 def _post_json(url: str, payload: dict, timeout: float) -> dict:
     request = urllib.request.Request(
         url,
@@ -111,6 +117,8 @@ class OllamaDescriber:
         self._url = base_url.rstrip("/") + "/api/chat"
         self._timeout = timeout
         self._post = post
+        # Why the last call failed, for the operator; None after a success.
+        self.last_error: str | None = None
 
     def request(self, receipt_text: str, purpose: str | None) -> dict:
         why = purpose.strip() if purpose and purpose.strip() else "(ไม่ได้บอก)"
@@ -134,10 +142,12 @@ class OllamaDescriber:
         try:
             reply = self._post(self._url, self.request(receipt_text, purpose), self._timeout)
             draft = json.loads(reply["message"]["content"])["description"]
-        except Exception:
+        except Exception as error:
             # Down, slow, or answering something that is not the schema: the
             # bot carries on without a draft. Nothing here may stop a receipt.
+            self.last_error = failure(error)
             return None
+        self.last_error = None
         return clean(str(draft))
 
 

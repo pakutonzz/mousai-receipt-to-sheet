@@ -33,7 +33,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 
-from . import ocr
+from . import describe, ocr
 from .access import SESSION_COOKIE, Limiter, Sessions, passcode_matches
 from .messages import Notice, thai
 from .page import PageError
@@ -150,6 +150,7 @@ def create_app(
     session_secret: bytes | None = None,
     wall=time.time,
     read_limits: tuple[int, int] = (READS_PER_HOUR, READS_PER_DAY),
+    describer=None,
 ) -> FastAPI:
     """The app. With a passcode, everything but /login and /health needs a
     session. Without one it is open, which only suits a trusted local network.
@@ -157,7 +158,7 @@ def create_app(
     # No interactive API console: it would be a second, unguarded front door
     # to everything the page does.
     app = FastAPI(title="mousai", docs_url=None, redoc_url=None, openapi_url=None)
-    state: dict = {"sheets": sheets, "reader": reader}
+    state: dict = {"sheets": sheets, "reader": reader, "describer": describer}
     sessions = Sessions(session_secret or os.urandom(32), wall=wall)
     tries_by_client = Limiter(TRIES_PER_CLIENT, TRIES_WINDOW, clock)
     tries_overall = Limiter(TRIES_OVERALL, TRIES_WINDOW, clock)
@@ -197,6 +198,11 @@ def create_app(
         if state["reader"] is None:
             state["reader"] = ocr.detect()
         return state["reader"]
+
+    def get_describer():
+        if state["describer"] is None:
+            state["describer"] = describe.detect(load_env())
+        return state["describer"]
 
     def fail(request: Request, notice: Notice, status: int = 400):
         """Errors reach the user in Thai; the English form goes to the log."""
@@ -382,10 +388,14 @@ def create_app(
         reads_hourly.hit()
         reads_daily.hit()
         reading = get_reader().read_image(data, receipt.content_type)
+        # The same local model the bot uses drafts รายละเอียด from what the
+        # receipt says was bought. Nobody said why here, so the draft names
+        # only the what; the person adds the why before saving.
+        drafted = get_describer().describe(reading.text, None) if reading.text else None
         return {
             "amount": reading.amount,
             "date": reading.date.isoformat() if reading.date else None,
-            "description": reading.description or None,
+            "description": drafted,
             "notes": [thai(n) for n in reading.notes],
         }
 
@@ -487,6 +497,8 @@ def create_app(
         when = _entry_date(entry_date)
         if value is None or value <= 0 or when is None:
             return again(Notice("bad_date"), 400)
+        if not description.strip():
+            return again(Notice("description_required"), 400)
 
         draft = Draft(
             workbook_id=workbook_id,
