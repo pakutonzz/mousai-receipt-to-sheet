@@ -99,7 +99,10 @@ python scripts/serve.py
 
 ### 7. Bot ใช้ polling หรือ webhook
 
-🚧 **กำลังพัฒนา (in progress)** ยังไม่ได้ตัดสินใจ ตัว web app ไม่ได้ใช้ทั้งสองแบบ
+**Long polling** — bot เป็นฝ่ายไปดึงข้อความจาก Telegram เอง จึงไม่มีพอร์ตไหนบน Mac mini
+ที่เปิดรับการเชื่อมต่อจากภายนอก ข้อความที่ส่งมาตอนเครื่องปิดจะรออยู่ที่ Telegram นานสุด 24 ชั่วโมง
+รายละเอียดทั้งหมดอยู่ใน [.scratch/telegram-bot/spec.md](.scratch/telegram-bot/spec.md)
+(🚧 ตัว bot ยังอยู่ระหว่างพัฒนา)
 
 ## Running it
 
@@ -130,6 +133,27 @@ is billed to the clinic's Cloud Vision account.
   one clinic photographs. Past the cap the page asks for the fields by hand.
 - **Only the folder's Workbooks** are accepted, whatever `workbook_id` a
   browser sends, and FastAPI's `/docs` console is switched off.
+
+### On the Mac mini
+
+The Mac mini (`ssh mac`) runs the app from `/Users/Shared/mousai-receipt-to-sheet`
+as a LaunchAgent, `com.mousai.web`, on `127.0.0.1:8000` only. It starts when the
+Mac's user logs in and restarts if it crashes. Nothing on the Mac listens for
+the outside world, and it has no passcode, so reach it through SSH:
+
+```
+ssh -N -L 8000:127.0.0.1:8000 mac
+```
+
+then open `http://127.0.0.1:8000` on your own machine. To update and restart:
+
+```
+ssh mac 'cd /Users/Shared/mousai-receipt-to-sheet && git pull --ff-only && launchctl kickstart -k gui/$(id -u)/com.mousai.web'
+```
+
+The log is `~/Library/Logs/mousai/web.log` on the Mac. `.env`, the service
+account key and `tests/fixtures/baseline.json` are copied there by hand over SSH
+and readable only by the Mac's user; none of them is in git.
 
 ### Reaching it from outside the clinic wifi
 

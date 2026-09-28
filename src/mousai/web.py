@@ -7,11 +7,10 @@ button that writes. OCR still never writes anything. It fills in fields that a
 person corrects, and nothing is written until they press Confirm in the popup.
 
 What was shown is what gets written. Every preview carries a key derived from
-the exact cells it displayed, and Confirm recomputes the Placement from a fresh
-read of the Page and refuses unless the key matches. An edit that raced the
-preview, a second person writing to the same Page, or a stale cached read can
-therefore never turn into cells nobody looked at. It also means Confirm cannot
-be pressed at all without a preview having been computed for those exact cells.
+the exact cells it displayed, and Confirm refuses unless a fresh read gives the
+same key, so Confirm cannot be pressed at all without a preview of those exact
+cells. That rule lives in review.py, which the bot shares; this module parses
+forms, calls it, and renders.
 
 The user picks a Page directly rather than a Fund: only they know whether this
 spend belongs on เงินสดย่อย6 or on a page someone opened this morning. The Fund
@@ -25,8 +24,6 @@ of one request and never stored.
 from __future__ import annotations
 
 import datetime as dt
-import hashlib
-import json
 import os
 import time
 from pathlib import Path
@@ -39,8 +36,9 @@ from fastapi.templating import Jinja2Templates
 from . import ocr
 from .access import SESSION_COOKIE, Limiter, Sessions, passcode_matches
 from .messages import Notice, thai
-from .page import Formula, Page, PageError
-from .sheets import Sheets, SheetsError, load_env, split_ref
+from .page import PageError
+from .review import PREVIEW_TTL, Desk, Draft, Stale, severity  # noqa: F401  PREVIEW_TTL: tests read it from here
+from .sheets import Sheets, SheetsError, load_env
 from .templates import BY_FUND, fund_for_page
 
 TEMPLATES = Jinja2Templates(directory=str(Path(__file__).parent / "views"))
@@ -50,19 +48,6 @@ MAX_IMAGE_BYTES = 12 * 1024 * 1024
 
 # The sentinel the requester dropdown uses for "a name not in the list".
 OTHER = "__other__"
-
-NO_DETAIL = "(no detail)"
-
-# How long one read of a Page serves the live preview. Without it every pause in
-# typing is a Sheets read, and the service account has a single per-user quota
-# shared by the whole clinic. Confirm always reads fresh, so a stale preview can
-# cost the user a second look but never a wrong write.
-PREVIEW_TTL = 30.0
-
-# The Workbook list is what makes a workbook_id acceptable. It changes about
-# once a month, so a minute's cache costs nothing and saves a Drive call on
-# every preview.
-BOOKS_TTL = 60.0
 
 # Every receipt read is a Cloud Vision call on the clinic's billing account.
 # Far above what one clinic photographs, far below a runaway bill.
@@ -133,91 +118,6 @@ def _requester(choice: str, typed: str) -> str:
     return choice.strip() or "-"
 
 
-def cells_for_display(placement, template) -> list[dict]:
-    """The cells to be written, as a person will see them in the sheet.
-
-    Three of them are stored in a machine form that means nothing to a reader:
-    the date is a serial, the balance is a formula, and money carries whatever
-    precision float arithmetic left behind. The preview exists to tell someone
-    what will be true after they press the button, and "=F28-E29" does not tell
-    them the balance. What gets written is unchanged: the balance is still a live
-    formula, per ADR 0002.
-    """
-    date_ref = f"{template.date}{placement.row}"
-    money = {
-        f"{template.disbursed}{placement.row}",
-        f"{template.received}{placement.row}",
-    }
-    shown = []
-    for ref in sorted(placement.cells, key=split_ref):
-        value = placement.cells[ref]
-        if ref == date_ref:
-            text = f"{placement.date:%d/%m/%Y}"
-        elif isinstance(value, Formula):
-            text = f"{placement.balance:,.2f}"
-        elif ref in money and isinstance(value, (int, float)):
-            text = f"{value:,.2f}"
-        else:
-            text = str(value)
-        shown.append({"ref": ref, "value": text})
-    return shown
-
-
-# What each column holds, so the review can say "F21 ยอดจ่าย" rather than
-# leaving the reader to remember which letter is which on this Fund's layout.
-COLUMN_LABELS = {
-    "date": "วันที่",
-    "sequence": "ลำดับ",
-    "description": "รายละเอียด",
-    "received": "ยอดรับ",
-    "disbursed": "ยอดจ่าย",
-    "balance": "คงเหลือ",
-    "requester": "ผู้เบิก",
-    "note": "หมายเหตุ",
-}
-
-# Warnings that mean the money itself looks wrong are shown in red; the rest
-# (backdated, a Top-up above, the Page filling up) are worth a look, in amber.
-DANGER = {"negative_balance"}
-
-
-def labelled_cells(placement, template) -> list[dict]:
-    """cells_for_display, plus each column's name and the balance's formula.
-
-    The value shown stays the number, per cells_for_display. The formula rides
-    alongside so the reader can see the balance is live, not typed in.
-    """
-    names = {getattr(template, field): label for field, label in COLUMN_LABELS.items()}
-    out = []
-    for cell in cells_for_display(placement, template):
-        written = placement.cells[cell["ref"]]
-        out.append(
-            {
-                **cell,
-                "label": names.get(cell["ref"].rstrip("0123456789"), ""),
-                "formula": str(written) if isinstance(written, Formula) else None,
-            }
-        )
-    return out
-
-
-def fingerprint(workbook_id: str, page: str, placement) -> str:
-    """A short key for exactly what one preview showed.
-
-    Covers every cell to be written, formulas included, and the balance on
-    screen: that moves if someone edits an amount higher up without adding a
-    row, which the cells alone would not notice.
-    """
-    shown = {
-        "workbook": workbook_id,
-        "page": page,
-        "cells": sorted((ref, repr(value)) for ref, value in placement.cells.items()),
-        "balance": placement.balance,
-    }
-    blob = json.dumps(shown, ensure_ascii=False, sort_keys=True)
-    return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]
-
-
 def group_pages(pages, remembered: dict[str, str]) -> list[dict]:
     """Pages for the picker, grouped by Fund and flagged if remembered."""
     groups: dict[str, dict] = {}
@@ -257,7 +157,7 @@ def create_app(
     # No interactive API console: it would be a second, unguarded front door
     # to everything the page does.
     app = FastAPI(title="mousai", docs_url=None, redoc_url=None, openapi_url=None)
-    state: dict = {"sheets": sheets, "reader": reader, "pages": {}, "books": None}
+    state: dict = {"sheets": sheets, "reader": reader}
     sessions = Sessions(session_secret or os.urandom(32), wall=wall)
     tries_by_client = Limiter(TRIES_PER_CLIENT, TRIES_WINDOW, clock)
     tries_overall = Limiter(TRIES_OVERALL, TRIES_WINDOW, clock)
@@ -291,42 +191,12 @@ def create_app(
             state["sheets"] = Sheets.from_env()
         return state["sheets"]
 
+    desk = Desk(get_sheets, clock)
+
     def get_reader():
         if state["reader"] is None:
             state["reader"] = ocr.detect()
         return state["reader"]
-
-    def cached_page(workbook_id: str, name: str, template) -> Page:
-        """A recent read of the Page, for the preview only. Never for writing."""
-        now = clock()
-        hit = state["pages"].get((workbook_id, name))
-        if hit is not None and now - hit[0] < PREVIEW_TTL:
-            return hit[1]
-        page = get_sheets().open(workbook_id).page(name, template)
-        state["pages"][(workbook_id, name)] = (now, page)
-        return page
-
-    def forget(workbook_id: str, name: str) -> None:
-        state["pages"].pop((workbook_id, name), None)
-
-    def books() -> list:
-        """The Workbooks in the folder: the picker, and the only ids accepted.
-
-        workbook_id arrives from the browser. Unchecked, it would let anyone
-        read and write any spreadsheet the service account can reach, the
-        scratch Workbook included.
-        """
-        now = clock()
-        cached = state["books"]
-        if cached is not None and now - cached[0] < BOOKS_TTL:
-            return cached[1]
-        found = get_sheets().workbooks()
-        state["books"] = (now, found)
-        return found
-
-    def check_book(workbook_id: str) -> None:
-        if workbook_id not in {book.id for book in books()}:
-            raise SheetsError(Notice("unknown_workbook"))
 
     def fail(request: Request, notice: Notice, status: int = 400):
         """Errors reach the user in Thai; the English form goes to the log."""
@@ -417,11 +287,11 @@ def create_app(
         in and sees the reason on top, instead of starting over.
         """
         try:
-            found = books()
+            found = desk.workbooks()
             if not found:
                 return fail(request, Notice("no_workbooks"))
             if workbook_id:
-                check_book(workbook_id)
+                desk.check_workbook(workbook_id)
             workbook = get_sheets().open(workbook_id or found[0].id)
             pages, remembered, requesters = survey(workbook)
         except SheetsError as error:
@@ -483,7 +353,7 @@ def create_app(
     def api_pages(workbook_id: str):
         """Repopulate the Page and requester pickers when the Workbook changes."""
         try:
-            check_book(workbook_id)
+            desk.check_workbook(workbook_id)
             workbook = get_sheets().open(workbook_id)
             pages, remembered, requesters = survey(workbook)
         except SheetsError as error:
@@ -536,53 +406,45 @@ def create_app(
         would go is already known, and so is a Page that is full or broken, so
         those come back straight away.
         """
-        template = fund_for_page(page)
-        if template is None:
+        if fund_for_page(page) is None:
             return refuse(Notice("unknown_page", {"page": page}))
         when = _entry_date(entry_date)
         if when is None:
             return refuse(Notice("bad_date"))
-        value = _decimal(amount)
-        ready = value is not None and value > 0
+        draft = Draft(
+            workbook_id=workbook_id,
+            page=page,
+            on=when,
+            description=description,
+            amount=_decimal(amount),
+            requester=_requester(requester, requester_other),
+            note=note,
+        )
         try:
-            check_book(workbook_id)
-            live = cached_page(workbook_id, page, template)
-            placement = live.place(
-                on=when,
-                description=description.strip() or NO_DETAIL,
-                amount=value if ready else 0.0,
-                requester=_requester(requester, requester_other),
-                note=note.strip() or None,
-            )
+            review = desk.review(draft)
         except (SheetsError, PageError) as error:
             return refuse(error.notice)
 
-        warnings = [
-            {
-                "text": thai(w),
-                "level": "danger" if w.code in DANGER else "warn",
-            }
-            for w in placement.warnings
-            if ready or w.code != "negative_balance"
-        ]
         body = {
-            "ready": ready,
-            "fund": template.fund,
+            "ready": review.ready,
+            "fund": review.fund,
             "page": page,
-            "row": placement.row,
-            "sequence": placement.sequence,
-            "write_date": placement.write_date,
-            "previous_balance": float(live.last_entry.balance),
+            "row": review.row,
+            "sequence": review.sequence,
+            "write_date": review.write_date,
+            "previous_balance": review.previous_balance,
             # Free rows now, and free rows once this Entry is in.
-            "free_rows": live.rows_remaining,
-            "rows_remaining": placement.rows_remaining,
-            "warnings": warnings,
+            "free_rows": review.free_rows,
+            "rows_remaining": review.rows_remaining,
+            "warnings": [
+                {"text": thai(w), "level": severity(w)} for w in review.warnings
+            ],
         }
-        if ready:
-            body["amount"] = value
-            body["balance"] = placement.balance
-            body["cells"] = labelled_cells(placement, template)
-            body["key"] = fingerprint(workbook_id, page, placement)
+        if review.ready:
+            body["amount"] = draft.amount
+            body["balance"] = review.balance
+            body["cells"] = list(review.cells)
+            body["key"] = review.key
         else:
             body["message"] = thai(Notice("amount_to_preview"))
         return body
@@ -626,30 +488,22 @@ def create_app(
         if value is None or value <= 0 or when is None:
             return again(Notice("bad_date"), 400)
 
+        draft = Draft(
+            workbook_id=workbook_id,
+            page=page,
+            on=when,
+            description=description,
+            amount=value,
+            requester=chosen_requester,
+            note=note,
+        )
         try:
-            check_book(workbook_id)
-            workbook = get_sheets().open(workbook_id)
-            # A fresh read, never the preview cache: this is the request that
-            # writes, so it works from what the Page says now.
-            live = workbook.page(page, template)
-            placement = live.place(
-                on=when,
-                description=description.strip() or NO_DETAIL,
-                amount=value,
-                requester=chosen_requester,
-                note=note.strip() or None,
-            )
-            if key != fingerprint(workbook_id, page, placement):
-                forget(workbook_id, page)
-                return again(Notice("preview_stale", {"page": page}), 409)
-            workbook.append(live, placement)
-            if remember:
-                workbook.remember_page(template.fund, page)
+            placement = desk.confirm(draft, key, remember=bool(remember))
+        except Stale as stale:
+            return again(stale.notice, 409)
         except (SheetsError, PageError) as error:
-            forget(workbook_id, page)
             return again(error.notice, 400)
 
-        forget(workbook_id, page)
         # Post/Redirect/Get: reloading the page after a save must not be able
         # to post the same Entry a second time.
         target = urlencode(
