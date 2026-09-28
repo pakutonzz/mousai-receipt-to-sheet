@@ -1,6 +1,6 @@
 # The list of Recorders and Keepers
 
-Status: ready-for-agent
+Status: resolved
 
 Who may use the bot is a file edited by hand.
 

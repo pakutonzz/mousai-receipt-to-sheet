@@ -9,3 +9,10 @@ __pycache__/
 # Snapshot of the Workbook: contains named individuals. Regenerate locally with
 # scripts/extract_baseline.py. See README.
 tests/fixtures/baseline.json
+
+# Who may use the bot: real names and Telegram IDs. See people.example.toml.
+people.toml
+
+# The bot's local store: unconfirmed Transactions. See src/mousai/store.py.
+mousai.db
+mousai.db-journal

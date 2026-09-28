@@ -227,6 +227,18 @@ class OnePage(unittest.TestCase):
         client, _, _ = build()
         self.assertEqual(client.get("/health").json(), {"ok": True, "ocr": "fake"})
 
+    def test_opens_on_the_current_month_not_the_last_edited_file(self):
+        names = [PAGE, EMERGENCY_PAGE]
+        service = FakeService({n: grid_for(n) for n in names}, {n: i for i, n in enumerate(names)})
+        books = [
+            WorkbookRef(id="aug", title="เบิกจ่ายเงินสด สิงหาคม26", modified="2026-09-03T09:00:00Z"),
+            WorkbookRef(id="sep", title="เบิกจ่ายเงินสด กันยายน26", modified="2026-09-01T09:00:00Z"),
+        ]
+        client = TestClient(create_app(FakeSheets(service, books), FakeReader()))
+        body = client.get("/").text
+        self.assertIn('<option value="sep" selected>', body)
+        self.assertIn('id="book-name">เบิกจ่ายเงินสด กันยายน26<', body)
+
     def test_a_workbook_with_no_pages_says_so(self):
         service = FakeService({}, {"ย่อย": 1})
         client = TestClient(create_app(FakeSheets(service), FakeReader()))

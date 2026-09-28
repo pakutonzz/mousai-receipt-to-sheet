@@ -317,7 +317,7 @@ def parse_amount(text: str) -> tuple[float | None, Notice]:
     return amount_from_lines(normalise(text).splitlines())
 
 
-def _year(raw: int) -> int:
+def full_year(raw: int) -> int:
     """Thai receipts mix Buddhist and Christian years, in two and four digits."""
     if raw > 2400:
         return raw - 543
@@ -368,7 +368,7 @@ def _first_date_in(body: str, today: dt.date) -> tuple[dt.date | None, Notice]:
                 year, month, day = groups
             else:
                 day, month, year = groups
-                year = _year(year)
+                year = full_year(year)
             if not (1 <= month <= 12 and 1 <= day <= 31):
                 continue
             try:
@@ -386,7 +386,7 @@ def _first_date_in(body: str, today: dt.date) -> tuple[dt.date | None, Notice]:
             rf"(\d{{1,2}})\s*{re.escape(name)}[฀-๿]*\.?\s*(\d{{2,4}})", body
         )
         if match:
-            day, year = int(match.group(1)), _year(int(match.group(2)))
+            day, year = int(match.group(1)), full_year(int(match.group(2)))
             try:
                 found = dt.date(year, month, day)
             except ValueError:

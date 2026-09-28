@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 from mousai.messages import EN, PASSTHROUGH, TH, Notice, english, thai  # noqa: E402
 
-SOURCES = list((ROOT / "src" / "mousai").glob("*.py")) + list((ROOT / "scripts").glob("*.py"))
+SOURCES = list((ROOT / "src" / "mousai").rglob("*.py")) + list((ROOT / "scripts").glob("*.py"))
 USED = re.compile(r'Notice\(\s*"([a-z_]+)"')
 
 
