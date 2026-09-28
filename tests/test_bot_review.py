@@ -342,6 +342,134 @@ class Endings(Base):
         self.assertEqual([p for _, p in self.describer.calls], ["รับรองลูกค้า"])
 
 
+class Corrections(Base):
+    """Typing while a Review is open corrects it (ticket 05)."""
+
+    def setUp(self):
+        super().setUp()
+        self.review = self.reviewed()
+        self.review_message = self.next_message
+
+    def test_a_correction_moves_the_review_below_with_what_changed(self):
+        replies = self.text("จำนวนเงินผิด 50")
+        self.assertEqual(self.txn().draft.amount, 50.0)
+        moved, fresh = replies
+        self.assertEqual(moved.edit, self.review_message)
+        self.assertEqual(moved.buttons, ())
+        self.assertIsNone(fresh.edit)
+        self.assertEqual(fresh.remember, 1)
+        self.assertIn("50.00", fresh.text)
+        self.assertIn(thai(Notice("bot_corrected", {"changes": "จำนวนเงิน 50.00"})), fresh.text)
+        # The fresh Review is the one later edits redraw.
+        self.assertEqual(self.bot._review_message(1, MON), self.next_message)
+
+    def test_the_fresh_key_confirms(self):
+        replies = self.text("จำนวนเงินผิด 50")
+        self.press(self.button(replies, "ok:"))
+        self.assertEqual(self.txn().state, "confirmed")
+        self.assertEqual(len(written(self.service)), 1)
+
+    def test_a_fund_by_name(self):
+        self.text("ใส่เงินฉุกเฉิน")
+        self.assertEqual(self.txn().draft.page, EMERGENCY_PAGE)
+
+    def test_a_requester_must_already_exist(self):
+        self.text("ผู้เบิก เจ้าของ")
+        self.assertEqual(self.txn().draft.requester, "เจ้าของ")
+        replies = self.text("ผู้เบิก ใครก็ไม่รู้")
+        self.assertEqual(replies[0].text, thai(Notice("bot_use_edit_button")))
+        self.assertEqual(self.txn().draft.requester, "เจ้าของ")
+
+    def test_chat_is_answered_with_the_edit_button(self):
+        replies = self.text("ขอบคุณครับ")
+        self.assertEqual([r.text for r in replies], [thai(Notice("bot_use_edit_button"))])
+        self.assertEqual(self.txn().draft.amount, 23.0)
+
+    def test_nothing_is_written_by_a_correction(self):
+        self.text("จำนวนเงินผิด 50")
+        self.text("ใส่เงินฉุกเฉิน")
+        self.assertEqual(written(self.service), [])
+
+    def test_once_settled_typing_starts_a_new_entry(self):
+        self.press(self.button([self.review], "ok:"))
+        replies = self.text("ค่าน้ำแข็ง 45")
+        self.assertEqual(self.store.get(2).draft.amount, 45.0)
+        self.assertIn(thai(Notice("bot_review_no_receipt")), replies[0].text)
+
+
+class TypedEntries(Base):
+    """A spend with no receipt (ticket 11)."""
+
+    def test_amount_and_description_from_one_line(self):
+        replies = self.text("ค่าน้ำแข็ง 45")
+        draft = self.txn().draft
+        self.assertEqual((draft.amount, draft.description, draft.on), (45.0, "ค่าน้ำแข็ง", TODAY))
+        self.assertEqual(draft.note, "ไม่มีใบเสร็จ")
+        self.assertIsNone(self.txn().photo_unique_id)
+        self.assertIn(thai(Notice("bot_review_no_receipt")), replies[0].text)
+        self.assertIn("ok:1:", self.button(replies, "ok:"))
+
+    def test_confirming_reminds_about_the_certificate(self):
+        replies = self.text("ค่าส่งของ 60 เมื่อวาน")
+        saved = self.press(self.button(replies, "ok:"))
+        self.assertIn(thai(Notice("bot_saved_no_receipt")), saved[0].text)
+        self.assertEqual(len(written(self.service)), 1)
+        self.assertEqual(self.txn().draft.on, TODAY - dt.timedelta(days=1))
+
+    def test_the_note_keeps_no_receipt_whatever_is_typed(self):
+        self.text("ค่าน้ำแข็ง 45")
+        self.press("f:1:note")
+        self.text("ซื้อหน้าร้าน")
+        self.assertEqual(self.txn().draft.note, "ไม่มีใบเสร็จ ซื้อหน้าร้าน")
+        self.press("f:1:note")
+        self.text("-")
+        self.assertEqual(self.txn().draft.note, "ไม่มีใบเสร็จ")
+        self.text("หมายเหตุ -")
+        self.assertEqual(self.txn().draft.note, "ไม่มีใบเสร็จ")
+
+    def test_two_numbers_are_asked_about(self):
+        replies = self.text("ค่ากระดาษ A4 2 รีม 250")
+        self.assertEqual(replies[0].text, thai(Notice("bot_ask_description")))
+        replies = self.text("ค่ากระดาษ A4 สองรีม")
+        self.assertIn("จำนวนเงิน", replies[0].text)
+        replies = self.text("250")
+        self.assertIn("ok:1:", self.button(replies, "ok:"))
+        self.assertEqual(self.txn().draft.description, "ค่ากระดาษ A4 สองรีม")
+
+    def test_an_impossible_date_is_asked(self):
+        replies = self.text("ค่าน้ำ 20 31/2")
+        self.assertEqual(replies[0].text, thai(Notice("bot_ask_on")))
+        replies = self.text("3/8")
+        self.assertEqual(self.txn().draft.on, dt.date(2026, 8, 3))
+        self.assertIn("ok:1:", self.button(replies, "ok:"))
+
+    def test_hello_is_not_a_spend(self):
+        replies = self.text("สวัสดีครับ")
+        self.assertEqual(replies[0].text, thai(Notice("bot_help")))
+        self.assertIsNone(self.txn())
+
+
+class WithAModel(Base):
+    def test_the_interpreter_reads_what_rules_cannot(self):
+        class Model:
+            name = "fake"
+
+            def entry(self, text, today):
+                from mousai.typed import Entry
+
+                return Entry(amount=80.0, description="ค่าวินมอเตอร์ไซค์ส่งยา", on=today)
+
+            def correction(self, text, **context):
+                from mousai.typed import Changes
+
+                return Changes()
+
+        self.bot._interpreter = Model()
+        self.text("จ่ายวินไปส่งยาให้คนไข้ไปแปดสิบ")
+        draft = self.txn().draft
+        self.assertEqual((draft.amount, draft.description), (80.0, "ค่าวินมอเตอร์ไซค์ส่งยา"))
+
+
 class Forgery(Base):
     def test_another_keeper_cannot_press_someone_elses_buttons(self):
         review = self.reviewed()

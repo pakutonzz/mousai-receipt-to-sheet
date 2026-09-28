@@ -21,6 +21,11 @@ A Keeper's receipt (ticket 09):
    twice, then goes through the Desk, which writes only the cells the Review
    showed. A Page that moved on meanwhile gets a fresh Review instead.
 
+Typed text (tickets 05 and 11): with a Review open, a message corrects it
+("จำนวนเงินผิด 120", "ใส่เงินฉุกเฉิน") and the corrected Review is sent again;
+with none open, it is a spend with no receipt ("ค่าน้ำแข็ง 45"), which gets
+ไม่มีใบเสร็จ in its Note and the same Review. `typed.py` reads both.
+
 Nothing is written anywhere else, and every write goes through `Desk.confirm`.
 """
 
@@ -40,12 +45,17 @@ from ..review import Draft, Stale
 from ..sheets import SheetsError
 from ..store import Settled
 from ..templates import PETTY_CASH
+from ..typed import RuleInterpreter
 from . import fields, render
 from .render import Button
 
 # A stranger who keeps messaging reaches the operator once a day, not once a
 # message.
 ASK_EVERY = 24 * 3600
+
+# Written in the Note of every Entry typed without a receipt, so whoever reads
+# the Workbook knows a receipt-substitute certificate belongs with it.
+NO_RECEIPT = "ไม่มีใบเสร็จ"
 
 
 @dataclass(frozen=True)
@@ -108,6 +118,7 @@ class Bot:
         store=None,
         reader=None,
         describer=None,
+        interpreter=None,
         today: Callable[[], dt.date] = dt.date.today,
     ):
         self._people = people
@@ -117,6 +128,7 @@ class Bot:
         self._store = store
         self._reader = reader
         self._describer = describer
+        self._interpreter = interpreter or RuleInterpreter()
         self._today = today
         self._waiting: dict[int, Waiting] = {}
         # The receipt's text, kept only until its Description is drafted.
@@ -157,9 +169,16 @@ class Bot:
             self._waiting.pop(chat, None)
             return [Send(chat, thai(self._welcome(person)))]
         waiting = self._waiting.pop(chat, None)
-        if waiting and text:
+        if not text:
+            return [Send(chat, render.say("bot_help"))]
+        if waiting:
             return self._answer(person, chat, waiting, text)
-        return [Send(chat, render.say("bot_help"))]
+        # With a Review open, typing corrects it; otherwise it is a spend
+        # with no receipt.
+        txn = self._open_review(person, chat)
+        if txn is not None:
+            return self._correct(person, chat, txn, text)
+        return self._typed_entry(person, chat, text)
 
     # -- a photo arrives ----------------------------------------------------
 
@@ -228,6 +247,64 @@ class Bot:
             return [Send(chat, render.say("bot_ask_amount"))]
         return self._show(person, chat, txn_id, edit=self._review_message(txn_id, chat))
 
+    # -- typed text ---------------------------------------------------------
+
+    def _open_review(self, person: Person, chat: int):
+        """The sender's newest open Transaction, if its Review is in this chat."""
+        self._store.expire_open()
+        txn = self._store.latest_open(person.telegram_id)
+        if txn is None or self._review_message(txn.id, chat) is None:
+            return None
+        return txn
+
+    def _correct(self, person: Person, chat: int, txn, text: str) -> list[Send]:
+        """A typed correction: applied to the Draft, shown as a fresh Review.
+
+        The fresh Review goes out below the person's message, where they are
+        looking, and the old one loses its buttons so only one can be confirmed.
+        """
+        draft = txn.draft
+        workbook = self._desk.workbook(draft.workbook_id)
+        known = self._desk.requesters(draft.workbook_id) + [
+            p.requester for p in self._people.current().by_id.values()
+        ]
+        changes = self._interpreter.correction(
+            text,
+            pages=[name for name, _ in workbook.writable_pages()],
+            requesters=known,
+            today=self._today(),
+        )
+        if changes.empty:
+            return [Send(chat, render.say("bot_use_edit_button"))]
+        if changes.note is not None and txn.photo_unique_id is None:
+            changes = replace(changes, note=self._no_receipt_note(changes.note))
+        self._store.update(txn.id, changes.apply(draft))
+        old = self._review_message(txn.id, chat)
+        moved = [Send(chat, render.say("bot_review_moved"), edit=old)] if old else []
+        lead = Notice("bot_corrected", {"changes": render.changes_text(changes)})
+        return moved + self._show(person, chat, txn.id, lead=lead)
+
+    def _typed_entry(self, person: Person, chat: int, text: str) -> list[Send]:
+        """A spend with no receipt: the same Review, with ไม่มีใบเสร็จ in the Note."""
+        entry = self._interpreter.entry(text, self._today())
+        if entry is None:
+            return [Send(chat, render.say("bot_help"))]
+        draft = self._fresh_draft(person, on=entry.on, amount=entry.amount)
+        draft = replace(draft, description=entry.description or "", note=NO_RECEIPT)
+        txn = self._store.add(person.telegram_id, draft)
+        if entry.date_unclear:
+            self._waiting[chat] = Waiting(txn.id, "on")
+            return [Send(chat, render.say("bot_ask_on"))]
+        return self._next(person, chat, txn.id)
+
+    @staticmethod
+    def _no_receipt_note(typed: str) -> str:
+        """ไม่มีใบเสร็จ stays in the Note whatever else is typed there."""
+        typed = (typed or "").strip()
+        if typed.startswith(NO_RECEIPT):
+            return typed
+        return f"{NO_RECEIPT} {typed}".strip()
+
     # -- the Review ---------------------------------------------------------
 
     def _show(
@@ -256,7 +333,12 @@ class Bot:
                     remember=txn_id,
                 )
             ]
-        text = render.review_text(review, self._workbook_title(txn.draft.workbook_id), lead)
+        text = render.review_text(
+            review,
+            self._workbook_title(txn.draft.workbook_id),
+            lead,
+            no_receipt=txn.photo_unique_id is None,
+        )
         if buttons is None:
             buttons = render.review_buttons(txn_id, review.key, keeper=person.is_keeper)
         return [
@@ -292,7 +374,10 @@ class Bot:
         elif waiting.what == "requester":
             changed = replace(draft, requester=fields.requester(text))
         elif waiting.what == "note":
-            changed = replace(draft, note=fields.note(text) or None)
+            note = fields.note(text)
+            if txn.photo_unique_id is None:
+                note = self._no_receipt_note(note)
+            changed = replace(draft, note=note or None)
         else:
             return [Send(chat, render.say("bot_help"))]
 
@@ -423,6 +508,8 @@ class Bot:
             amount=render.money(txn.draft.amount),
             balance=render.money(placement.balance),
         )
+        if txn.photo_unique_id is None:
+            saved += "\n" + render.say("bot_saved_no_receipt")
         return [Send(chat, saved, edit=message)]
 
     # -- the door -----------------------------------------------------------

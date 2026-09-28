@@ -169,7 +169,8 @@ def build(token: str, bot: Bot) -> Application:
                 await update.callback_query.answer()
             except TelegramError:
                 pass
-        if incoming.photo is not None and incoming.private:
+        if incoming.private and incoming.button is None:
+            # Reading a receipt or a typed message can take the model seconds.
             try:
                 await context.bot.send_chat_action(incoming.chat_id, ChatAction.TYPING)
             except TelegramError:

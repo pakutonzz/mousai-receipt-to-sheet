@@ -18,7 +18,7 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 def main() -> int:
-    from mousai import describe, ocr, people, store
+    from mousai import describe, ocr, people, store, typed
     from mousai.bot.core import Bot
     from mousai.bot.polling import run
     from mousai.messages import english
@@ -62,10 +62,12 @@ def main() -> int:
 
     reader = ocr.detect(env)
     describer = describe.detect(env)
+    interpreter = typed.detect(env)
     store_path = store.path_from_env(env)
     print(f"  store         {store_path}")
     print(f"  ocr           {reader.name}")
     print(f"  descriptions  {describer.name}")
+    print(f"  typed text    {interpreter.name}")
     print()
 
     bot = Bot(
@@ -74,6 +76,7 @@ def main() -> int:
         store=store.Store(store_path),
         reader=reader,
         describer=describer,
+        interpreter=interpreter,
     )
     run(token, bot)
     return 0

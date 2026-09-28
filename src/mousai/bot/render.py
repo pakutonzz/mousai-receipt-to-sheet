@@ -37,7 +37,9 @@ def money(value: float) -> str:
     return f"{value:,.2f}"
 
 
-def review_text(review: Review, workbook_title: str, lead: Notice | None = None) -> str:
+def review_text(
+    review: Review, workbook_title: str, lead: Notice | None = None, *, no_receipt: bool = False
+) -> str:
     draft = review.draft
     lines = []
     if lead is not None:
@@ -57,6 +59,8 @@ def review_text(review: Review, workbook_title: str, lead: Notice | None = None)
             )
         )
     )
+    if no_receipt:
+        lines.append(f"⚠️ {escape(say('bot_review_no_receipt'))}")
     for warning in review.warnings:
         marker = "⛔" if severity(warning) == "danger" else "⚠️"
         lines.append(f"{marker} {escape(thai(warning))}")
@@ -103,3 +107,21 @@ def purpose_buttons(txn_id: int) -> tuple[tuple[Button, ...], ...]:
     rows = [tuple(buttons[i : i + 2]) for i in range(0, len(buttons), 2)]
     rows.append((Button(say("bot_button_type"), f"pu:{txn_id}:x"),))
     return tuple(rows)
+
+
+def changes_text(changes) -> str:
+    """"จำนวนเงิน 120.00 · หน้า เงินฉุกเฉิน3", for the line above a corrected Review."""
+    parts = []
+    for field in ("amount", "on", "description", "requester", "note", "page"):
+        value = getattr(changes, field)
+        if value is None:
+            continue
+        if field == "note" and value == "":
+            parts.append(say("bot_note_cleared"))
+            continue
+        if field == "amount":
+            value = money(value)
+        elif field == "on":
+            value = f"{value:%d/%m/%Y}"
+        parts.append(f"{say(f'bot_field_{field}')} {value}")
+    return " · ".join(parts)

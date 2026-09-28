@@ -158,6 +158,15 @@ class Store:
         ).fetchall()
         return [self._transaction(r) for r in rows]
 
+    def latest_open(self, sender_id: int) -> Transaction | None:
+        """The sender's newest Transaction still open, if any."""
+        row = self._db.execute(
+            "SELECT * FROM txn WHERE state = 'open' AND sender_id = ?"
+            " ORDER BY created_at DESC, id DESC LIMIT 1",
+            (sender_id,),
+        ).fetchone()
+        return self._transaction(row) if row else None
+
     def shown_in(self, txn_id: int) -> list[tuple[int, int, str]]:
         """Every chat message showing this Transaction: (chat, message, kind)."""
         rows = self._db.execute(

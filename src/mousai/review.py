@@ -225,6 +225,7 @@ class Desk:
         self._clock = clock
         self._pages: dict[tuple[str, str], tuple[float, Page]] = {}
         self._books: tuple[float, list] | None = None
+        self._requesters: dict[str, tuple[float, list[str]]] = {}
 
     # -- which Workbooks and Pages ------------------------------------------
 
@@ -246,6 +247,17 @@ class Desk:
         """An accepted Workbook, for reading its Pages, Active Pages and names."""
         self.check_workbook(workbook_id)
         return self._sheets().open(workbook_id)
+
+    def requesters(self, workbook_id: str) -> list[str]:
+        """Names already in a Workbook's ผู้เบิก column. Reads every Page, so
+        cached like the Workbook list."""
+        now = self._clock()
+        hit = self._requesters.get(workbook_id)
+        if hit is not None and now - hit[0] < BOOKS_TTL:
+            return hit[1]
+        names = self.workbook(workbook_id).requesters()
+        self._requesters[workbook_id] = (now, names)
+        return names
 
     @staticmethod
     def template_for(page: str) -> Template:
