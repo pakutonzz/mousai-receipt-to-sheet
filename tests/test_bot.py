@@ -376,6 +376,26 @@ class TelegramSide(unittest.TestCase):
         # The new message is now the Review to redraw.
         self.assertEqual(remembered, [(1, 42, 501, "review")])
 
+    def test_a_run_that_never_stopped_is_noticed_at_the_next_start(self):
+        import datetime as dt
+        import tempfile
+
+        from mousai.bot.polling import Running
+
+        with tempfile.TemporaryDirectory() as folder:
+            running = Running(Path(folder) / "mousai.db.running")
+            self.assertIsNone(running.start(dt.datetime(2026, 9, 28, 9, 0)))
+            running.stop()
+            # A clean stop: the next start has nothing to report.
+            self.assertIsNone(running.start(dt.datetime(2026, 9, 28, 10, 0)))
+            # No stop this time: a crash, a kill, the power.
+            self.assertEqual(running.start(dt.datetime(2026, 9, 28, 11, 0)), "2026-09-28 10:00")
+
+    def test_the_operators_hear_the_bot_is_back(self):
+        replies = Bot(FakePeopleFile()).restarted("2026-09-28 10:00")
+        self.assertEqual({r.chat_id for r in replies}, {OWNER, OPERATOR})
+        self.assertIn("2026-09-28 10:00", replies[0].text)
+
     def test_the_application_builds_without_the_network(self):
         from mousai.bot.polling import build
 

@@ -16,3 +16,4 @@ people.toml
 # The bot's local store: unconfirmed Transactions. See src/mousai/store.py.
 mousai.db
 mousai.db-journal
+mousai.db.running

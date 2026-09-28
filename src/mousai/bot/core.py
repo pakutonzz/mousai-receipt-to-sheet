@@ -220,6 +220,12 @@ class Bot:
         told = [Send(incoming.chat_id, render.say("bot_failed"))] if incoming.private else []
         return told + self._alert(kind, failure(error))
 
+    def restarted(self, since: str) -> list[Send]:
+        """The last run ended without a clean shutdown: a crash, a kill, or the
+        power. The operators hear that the bot is back, and since when it ran."""
+        text = render.say("bot_restarted", since=since or "?")
+        return [Send(p.telegram_id, text) for p in self._people.current().operators]
+
     def _alert(self, kind: str, detail: str) -> list[Send]:
         """Tell the operators a part of the system failed, once an hour per part."""
         if self._alerted.blocked(kind):

@@ -20,7 +20,7 @@ sys.path.insert(0, str(ROOT / "src"))
 def main() -> int:
     from mousai import describe, ocr, people, store, typed
     from mousai.bot.core import Bot
-    from mousai.bot.polling import run
+    from mousai.bot.polling import Running, run
     from mousai.messages import english
     from mousai.review import Desk
     from mousai.sheets import Sheets, load_env
@@ -78,7 +78,8 @@ def main() -> int:
         describer=describer,
         interpreter=interpreter,
     )
-    run(token, bot)
+    # Beside the store: found there at start, the last run did not stop cleanly.
+    run(token, bot, Running(store_path.with_name(store_path.name + ".running")))
     return 0
 
 

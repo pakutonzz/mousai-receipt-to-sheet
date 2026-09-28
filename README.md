@@ -170,6 +170,28 @@ The log is `~/Library/Logs/mousai/web.log` on the Mac. `.env`, the service
 account key and `tests/fixtures/baseline.json` are copied there by hand over SSH
 and readable only by the Mac's user; none of them is in git.
 
+The Telegram bot runs beside it as `com.mousai.bot`, the same way: started at
+login, restarted within ten seconds if it crashes, logging to
+`~/Library/Logs/mousai/bot.log` (who sent what kind of message and how many
+replies went out, never what the messages said). It needs `people.toml` and
+`TELEGRAM_BOT_TOKEN` in `.env`, both on the Mac only, and keeps its Queue in
+`mousai.db` beside the code. To update both and restart them:
+
+```
+ssh mac 'cd /Users/Shared/mousai-receipt-to-sheet && git pull --ff-only && launchctl kickstart -k gui/$(id -u)/com.mousai.web && launchctl kickstart -k gui/$(id -u)/com.mousai.bot'
+```
+
+To follow the bot's log: `ssh mac 'tail -f ~/Library/Logs/mousai/bot.log'`.
+A restart like the one above is a clean stop. If the bot instead stopped some
+other way (a crash, a forced kill, the power), the operators in `people.toml`
+are told when it comes back. An edit to `people.toml` takes effect without a
+restart.
+
+Both services, and Ollama, belong to the Mac's `rukz` account and start when it
+logs in. After a reboot that happens only if the Mac logs into `rukz`
+automatically (System Settings → Users & Groups → Automatically log in as);
+otherwise nothing answers until someone logs in as `rukz`.
+
 ### Reaching it from outside the clinic wifi
 
 Tailscale is the simplest temporary way, because nothing needs installing on

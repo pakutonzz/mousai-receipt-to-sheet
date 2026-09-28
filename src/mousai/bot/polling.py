@@ -11,6 +11,7 @@ from __future__ import annotations
 import asyncio
 import datetime as dt
 import logging
+from pathlib import Path
 from typing import Callable
 
 from telegram import InlineKeyboardButton, InlineKeyboardMarkup, Update
@@ -167,7 +168,28 @@ async def deliver(telegram, replies: list[Send], remember=None) -> int:
     return sent
 
 
-def build(token: str, bot: Bot) -> Application:
+class Running:
+    """A file that exists while the bot runs.
+
+    Written at start and removed at a clean stop, which is what launchd's
+    SIGTERM gives on a restart, a logout or a shutdown. Found already there at
+    start, the last run ended some other way, and the operators are told.
+    """
+
+    def __init__(self, path: Path | str):
+        self.path = Path(path)
+
+    def start(self, now: dt.datetime) -> str | None:
+        """Mark this run; returns when the last one started, if it never stopped."""
+        previous = self.path.read_text(encoding="utf-8").strip() if self.path.exists() else None
+        self.path.write_text(f"{now:%Y-%m-%d %H:%M}", encoding="utf-8")
+        return previous
+
+    def stop(self) -> None:
+        self.path.unlink(missing_ok=True)
+
+
+def build(token: str, bot: Bot, running: Running | None = None) -> Application:
     async def remind(app: Application) -> None:
         """Ask the core every few minutes whether the daily reminder is due."""
         while True:
@@ -182,11 +204,18 @@ def build(token: str, bot: Bot) -> Application:
 
     async def post_init(app: Application) -> None:
         app.bot_data["reminders"] = asyncio.get_running_loop().create_task(remind(app))
+        if running is not None:
+            since = running.start(dt.datetime.now())
+            if since is not None:
+                log.warning("the last run, started %s, did not stop cleanly", since)
+                await deliver(app.bot, bot.restarted(since))
 
     async def post_shutdown(app: Application) -> None:
         task = app.bot_data.get("reminders")
         if task is not None:
             task.cancel()
+        if running is not None:
+            running.stop()
 
     app = (
         ApplicationBuilder()
@@ -250,5 +279,6 @@ def build(token: str, bot: Bot) -> Application:
     return app
 
 
-def run(token: str, bot: Bot) -> None:
-    build(token, bot).run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=False)
+def run(token: str, bot: Bot, running: Running | None = None) -> None:
+    app = build(token, bot, running)
+    app.run_polling(allowed_updates=Update.ALL_TYPES, drop_pending_updates=False)
