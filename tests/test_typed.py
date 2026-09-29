@@ -22,7 +22,7 @@ from mousai.typed import (  # noqa: E402
 
 TODAY = dt.date(2026, 8, 20)
 PAGES = ["เงินสดย่อย5", "เงินสดย่อย6", "เงินฉุกเฉิน3"]
-REQUESTERS = ["Aor", "มน", "หมอเก่ง"]
+REQUESTERS = ["Ann", "สมศรี", "หมอเก่ง"]
 
 
 def correct(text, interpreter=None):
@@ -78,8 +78,8 @@ class RuleEntries(unittest.TestCase):
 class RuleCorrections(unittest.TestCase):
     def test_labelled_fields(self):
         self.assertEqual(said(correct("จำนวนเงินผิด 120")), {"amount": 120.0})
-        self.assertEqual(said(correct("ผู้เบิก Aor")), {"requester": "Aor"})
-        self.assertEqual(said(correct("ผู้เบิก aor")), {"requester": "Aor"})
+        self.assertEqual(said(correct("ผู้เบิก Ann")), {"requester": "Ann"})
+        self.assertEqual(said(correct("ผู้เบิก ann")), {"requester": "Ann"})
         self.assertEqual(
             said(correct("รายละเอียดเป็นค่าน้ำแข็งใช้ในคลินิก")),
             {"description": "ค่าน้ำแข็งใช้ในคลินิก"},
@@ -115,7 +115,7 @@ class RuleCorrections(unittest.TestCase):
 
 class Applying(unittest.TestCase):
     def test_only_mentioned_fields_change_and_a_blank_note_clears(self):
-        draft = Draft("b", "เงินสดย่อย6", TODAY, "ค่าขนม", 23.0, "มน", "เก่า")
+        draft = Draft("b", "เงินสดย่อย6", TODAY, "ค่าขนม", 23.0, "สมศรี", "เก่า")
         changed = Changes(amount=50.0, note="").apply(draft)
         self.assertEqual(
             (changed.amount, changed.note, changed.description, changed.page),
@@ -158,15 +158,15 @@ class Model(unittest.TestCase):
         return OllamaInterpreter("m", post=post), post
 
     def test_what_the_model_names_is_matched_here(self):
-        model, _ = self.model(blank(amount=120, page="ฉุกเฉิน", requester="aor"))
+        model, _ = self.model(blank(amount=120, page="ฉุกเฉิน", requester="ann"))
         self.assertEqual(
-            said(correct("เงินผิดนะ 120 ใส่ฉุกเฉิน คนเบิกอ้อ aor", model)),
-            {"amount": 120.0, "page": "เงินฉุกเฉิน3", "requester": "Aor"},
+            said(correct("เงินผิดนะ 120 ใส่ฉุกเฉิน คนเบิกแอน ann", model)),
+            {"amount": 120.0, "page": "เงินฉุกเฉิน3", "requester": "Ann"},
         )
 
     def test_anything_not_in_the_message_is_dropped(self):
         """The model once put today's date on every correction."""
-        model, _ = self.model(blank(amount=120, date="วันนี้", requester="Aor", page="เงินฉุกเฉิน"))
+        model, _ = self.model(blank(amount=120, date="วันนี้", requester="Ann", page="เงินฉุกเฉิน"))
         self.assertEqual(said(correct("จำนวนเงินผิด 120", model)), {"amount": 120.0})
         model, _ = self.model(blank(amount=99))
         self.assertTrue(correct("จำนวนเงินผิด 120", model).empty)
@@ -193,7 +193,7 @@ class Model(unittest.TestCase):
 
     def test_the_rules_answer_when_the_model_is_down(self):
         model, post = self.model(fail=True)
-        self.assertEqual(said(correct("ผู้เบิก Aor", model)), {"requester": "Aor"})
+        self.assertEqual(said(correct("ผู้เบิก Ann", model)), {"requester": "Ann"})
         self.assertEqual(len(post.payloads), 1)
         self.assertIn("connection refused", model.last_error)
         entry = model.entry("ค่าน้ำแข็ง 45", TODAY)
@@ -202,9 +202,9 @@ class Model(unittest.TestCase):
     def test_the_prompt_carries_the_words_only(self):
         """No Page or Requester names: those are the Workbook's, matched here."""
         model, post = self.model(blank())
-        correct("ผู้เบิก Aor", model)
+        correct("ผู้เบิก Ann", model)
         prompt = json.dumps(post.payloads[0]["messages"], ensure_ascii=False)
-        self.assertIn("ผู้เบิก Aor", prompt)
+        self.assertIn("ผู้เบิก Ann", prompt)
         self.assertNotIn("2026", prompt)
         self.assertNotIn("หมอเก่ง", prompt)
         self.assertNotIn("เงินสดย่อย5", prompt)

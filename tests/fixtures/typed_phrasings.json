@@ -2,11 +2,11 @@
   "_about": "Phrasings for ticket 05, written for it: no clinic records. Today is 2026-08-20. Pages and Requesters are invented. An expected field absent from 'expect' must come back unchanged; 'contains' checks a Description holds that word.",
   "today": "2026-08-20",
   "pages": ["เงินสดย่อย5", "เงินสดย่อย6", "เงินฉุกเฉิน3"],
-  "requesters": ["Aor", "หมอเก่ง", "มน"],
+  "requesters": ["Ann", "หมอเก่ง", "สมศรี"],
   "corrections": [
     {"text": "จำนวนเงินผิด 120", "expect": {"amount": 120}},
     {"text": "ใส่เงินฉุกเฉิน", "expect": {"page": "เงินฉุกเฉิน3"}},
-    {"text": "ผู้เบิก Aor", "expect": {"requester": "Aor"}},
+    {"text": "ผู้เบิก Ann", "expect": {"requester": "Ann"}},
     {"text": "ยอดจริง 1,250 บาท", "expect": {"amount": 1250}},
     {"text": "ของเมื่อวานนะคะ", "expect": {"on": "2026-08-19"}},
     {"text": "วันที่ 3 ส.ค.", "expect": {"on": "2026-08-03"}},

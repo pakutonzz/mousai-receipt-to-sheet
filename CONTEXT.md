@@ -1,6 +1,6 @@
 # mousai
 
-Petty-cash and reimbursement recording for คลินิก มูไซ เวลเนส เซนเตอร์. A person captures a receipt (or declares there was none), checks the extracted figures, and the system records the spend into the clinic's existing cash-disbursement workbook without disturbing the printable forms it is made of.
+Petty-cash and reimbursement recording for a clinic. A person captures a receipt (or declares there was none), checks the extracted figures, and the system records the spend into the clinic's existing cash-disbursement workbook without disturbing the printable forms it is made of.
 
 ## Language
 
@@ -54,7 +54,7 @@ An Entry's position *within its date*, not within the Page. It restarts at 1 on 
 Which column carries which field on a Page, shared by every Page of one Fund. Funds do not share a Template; เงินสดย่อย starts at column B, เงินฉุกเฉิน at column A. A Template says nothing about where the Data region lies — that varies from Page to Page even within one Fund, and is read off the Page itself.
 
 **Note** (หมายเหตุ):
-Free text hung off an Entry, e.g. "รอมนเบิกเพิ่ม 61 บาท". It occupies the column headed ผู้อนุมัติ, which despite its label has never held an approver's name.
+Free text hung off an Entry, e.g. "ไม่มีใบเสร็จ". It occupies the column headed ผู้อนุมัติ, which despite its label has never held an approver's name.
 _Avoid_: Approver, ผู้อนุมัติ
 
 **Ledger sheet** (ชีทสรุป):
@@ -70,7 +70,7 @@ A person the system knows by name and allows to hand in Transactions, each with 
 _Avoid_: User, staff, member, submitter
 
 **Keeper** (ผู้ดูแลสมุด):
-A person allowed to confirm Transactions into the Workbook, e.g. มน and the clinic's owner. Confirming a Review records the spend; it is not approving the reimbursement.
+A person allowed to confirm Transactions into the Workbook, e.g. the bookkeeper and the clinic's owner. Confirming a Review records the spend; it is not approving the reimbursement.
 _Avoid_: Admin, approver
 
 **Queue** (คิวรอตรวจ):

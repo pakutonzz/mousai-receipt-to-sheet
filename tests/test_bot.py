@@ -18,7 +18,7 @@ MON, OWNER, HELPER, OPERATOR, STRANGER = 11, 22, 33, 44, 99
 PEOPLE = f"""
 [[person]]
 telegram_id = {MON}
-name = "มน"
+name = "สมศรี"
 roles = ["keeper"]
 
 [[person]]
@@ -75,7 +75,7 @@ class Strangers(Base):
         told = self.to(replies, STRANGER)
         self.assertEqual(len(told), 1)
         self.assertIn(str(STRANGER), told[0])
-        self.assertNotIn("มน", told[0])
+        self.assertNotIn("สมศรี", told[0])
 
     def test_every_operator_hears_who_asked(self):
         replies = self.bot.handle(says(STRANGER, name="Somchai", username="somchai_k"))
@@ -229,7 +229,7 @@ class TelegramSide(unittest.TestCase):
                     "message_id": 5,
                     "date": 1_800_000_000,
                     "chat": {"id": 42, "type": chat_type},
-                    "from": {"id": 42, "is_bot": False, "first_name": "มน", "username": "mon"},
+                    "from": {"id": 42, "is_bot": False, "first_name": "สมศรี", "username": "somsri"},
                     "text": text,
                 },
             },
@@ -244,7 +244,7 @@ class TelegramSide(unittest.TestCase):
             (incoming.chat_id, incoming.user_id, incoming.private, incoming.text),
             (42, 42, True, "สวัสดี"),
         )
-        self.assertEqual((incoming.name, incoming.username), ("มน", "mon"))
+        self.assertEqual((incoming.name, incoming.username), ("สมศรี", "somsri"))
 
     def test_a_group_message_is_marked_as_not_private(self):
         from mousai.bot.polling import incoming_from
@@ -279,7 +279,7 @@ class TelegramSide(unittest.TestCase):
                     "id": "q1",
                     "chat_instance": "c",
                     "data": "ok:1:abc",
-                    "from": {"id": 42, "is_bot": False, "first_name": "มน"},
+                    "from": {"id": 42, "is_bot": False, "first_name": "สมศรี"},
                     "message": {
                         "message_id": 77,
                         "date": 1_800_000_000,
@@ -308,7 +308,7 @@ class TelegramSide(unittest.TestCase):
                     "message_id": 6,
                     "date": 1_800_000_000,
                     "chat": {"id": 42, "type": "private"},
-                    "from": {"id": 42, "is_bot": False, "first_name": "มน"},
+                    "from": {"id": 42, "is_bot": False, "first_name": "สมศรี"},
                     "caption": "รับรองลูกค้า",
                     "media_group_id": "album-7",
                     "photo": [
@@ -360,12 +360,12 @@ class TelegramSide(unittest.TestCase):
         remembered = []
         replies = [
             Send(42, "waiting #1", photo="file-1", remember=1, kind="photo_card"),
-            Send(43, "saved by มน", edit=77, caption=True),
+            Send(43, "saved by สมศรี", edit=77, caption=True),
         ]
         asyncio.run(deliver(telegram, replies, lambda *a: remembered.append(a)))
         self.assertEqual(telegram.photos, [(42, "file-1", "waiting #1")])
         self.assertEqual(remembered, [(1, 42, 501, "photo_card")])
-        self.assertEqual(telegram.captions, [(43, 77, "saved by มน")])
+        self.assertEqual(telegram.captions, [(43, 77, "saved by สมศรี")])
         self.assertEqual(telegram.sent, [])
 
     def test_an_edit_telegram_refuses_is_sent_new(self):

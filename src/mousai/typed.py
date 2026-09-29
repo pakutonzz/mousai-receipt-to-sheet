@@ -4,7 +4,7 @@ Two jobs, each done by the local model when there is one and by plain rules
 when there is not (or when it fails):
 
 - A **correction**, typed while a Review is open: "จำนวนเงินผิด 120",
-  "ใส่เงินฉุกเฉิน", "ผู้เบิก Aor". It becomes a set of field changes.
+  "ใส่เงินฉุกเฉิน", "ผู้เบิก Ann". It becomes a set of field changes.
 - A **text-only entry**: "ค่าน้ำแข็ง 45", "ค่าส่งของ 60 เมื่อวาน". It becomes
   an amount, a Description and a date.
 
@@ -304,7 +304,7 @@ CORRECTION_INSTRUCTIONS = """\
 ตัวอย่าง (ช่องที่ไม่ได้เขียนคือ null):
 จำนวนเงินผิด 120 -> amount 120
 ใส่เงินฉุกเฉิน -> page "เงินฉุกเฉิน"
-ผู้เบิก Aor -> requester "Aor"
+ผู้เบิก Ann -> requester "Ann"
 ของเมื่อวานนะ -> date "เมื่อวาน"
 รายละเอียดเป็นค่าน้ำแข็งใช้ในคลินิก -> description "ค่าน้ำแข็งใช้ในคลินิก"
 ยอด 85 วันที่ 3/8 -> amount 85, date "3/8"

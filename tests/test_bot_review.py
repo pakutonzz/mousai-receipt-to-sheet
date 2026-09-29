@@ -163,7 +163,7 @@ class HappyPath(Base):
         self.reviewed()
         draft = self.txn().draft
         self.assertEqual(draft.page, PAGE)
-        self.assertEqual(draft.requester, "มน")
+        self.assertEqual(draft.requester, "สมศรี")
         self.assertEqual(draft.workbook_id, BOOK)
 
     def test_confirming_twice_writes_once(self):
@@ -172,7 +172,7 @@ class HappyPath(Base):
         self.press(ok)
         again = self.press(ok)
         self.assertEqual(len(written(self.service)), 1)
-        self.assertIn("มน", again[0].text)
+        self.assertIn("สมศรี", again[0].text)
         self.assertIn(thai(Notice("state_confirmed")), again[0].text)
 
 

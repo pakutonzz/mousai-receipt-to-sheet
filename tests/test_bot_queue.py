@@ -110,13 +110,13 @@ class Deciding(Queue):
         self.assertIn("ผู้ช่วย", owner_told.text)
         self.assertEqual(owner_card.edit, self.card(OWNER))
         self.assertTrue(owner_card.caption)
-        self.assertIn("มน", owner_card.text)
+        self.assertIn("สมศรี", owner_card.text)
         self.assertEqual(owner_card.buttons, ())
         # The Recorder hears it as a new message.
         (outcome,) = by_chat[HELPER]
         self.assertIsNone(outcome.edit)
         self.assertIn("แถว 21", outcome.text)
-        self.assertIn("มน", outcome.text)
+        self.assertIn("สมศรี", outcome.text)
         # Mon's own card loses its button too.
         self.assertIn(self.card(MON), [r.edit for r in by_chat[MON]])
 
@@ -212,7 +212,7 @@ class Rejecting(Queue):
         self.press(next(d for d in buttons(mon) if d.startswith("ok:")), who=MON)
         late = self.press("rr:1:0", who=OWNER)
         self.assertEqual(self.txn().state, "confirmed")
-        self.assertIn("มน", late[0].text)
+        self.assertIn("สมศรี", late[0].text)
 
 
 class Listing(Queue):
