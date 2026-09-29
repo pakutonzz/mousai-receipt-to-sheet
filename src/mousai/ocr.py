@@ -22,7 +22,7 @@ from .messages import Notice
 from .receipt import Reading, Word
 from .receipt import read as read_text
 from .receipt import read_layout
-from .sheets import beside_the_code, load_env
+from .sheets import RETRIES, beside_the_code, load_env
 
 VISION_SCOPES = ["https://www.googleapis.com/auth/cloud-platform"]
 
@@ -105,7 +105,7 @@ class GoogleVisionReader:
             ]
         }
         try:
-            response = self._service.images().annotate(body=body).execute()
+            response = self._service.images().annotate(body=body).execute(num_retries=RETRIES)
         except Exception as error:  # noqa: BLE001
             # Deliberately broad. A disabled API raises HttpError, a dead network
             # raises OSError, and an expired key raises from the auth library —

@@ -37,10 +37,14 @@ from test_page import BASELINE, grid_for  # noqa: E402
 
 
 class _Execute:
+    # How many retries each call asked for, across every fake.
+    retries: list[int] = []
+
     def __init__(self, result):
         self._result = result
 
-    def execute(self):
+    def execute(self, num_retries=0):
+        _Execute.retries.append(num_retries)
         return self._result
 
 
@@ -192,6 +196,49 @@ class Picker(unittest.TestCase):
         found = sheets.workbooks()
         self.assertEqual([w.id for w in found], ["august"])
         self.assertIsInstance(found[0], WorkbookRef)
+
+
+class Retrying(unittest.TestCase):
+    """A dropped connection is retried, not turned into a failed receipt."""
+
+    def test_every_call_asks_for_retries(self):
+        from mousai.sheets import RETRIES
+
+        _Execute.retries.clear()
+        workbook, _ = workbook_with()
+        page = workbook.page("เงินสดย่อย6", PETTY_CASH)
+        workbook.append(page, page.place(on=dt.date(2026, 8, 3), description="x", amount=23))
+        workbook.remember_page(PETTY_CASH.fund, "เงินสดย่อย6")
+        workbook.requesters()
+        self.assertTrue(_Execute.retries)
+        self.assertEqual(set(_Execute.retries), {RETRIES})
+
+    def test_the_library_retries_the_error_that_failed_a_receipt(self):
+        """2026-09-29: renewing the token after a night idle hit a dead
+        connection. With retries, the second attempt goes through."""
+        import json
+        import ssl
+
+        import httplib2
+        from googleapiclient.http import HttpRequest
+
+        from mousai.sheets import RETRIES
+
+        class Flaky:
+            calls = 0
+
+            def request(self, uri, method="GET", body=None, headers=None, **kwargs):
+                Flaky.calls += 1
+                if Flaky.calls == 1:
+                    raise ssl.SSLError("[SSL: UNEXPECTED_EOF_WHILE_READING] unexpected eof")
+                return httplib2.Response({"status": "200"}), b'{"files": []}'
+
+        request = HttpRequest(
+            Flaky(), lambda resp, content: json.loads(content), "https://www.googleapis.com/drive/v3/files"
+        )
+        request._sleep = lambda seconds: None
+        self.assertEqual(request.execute(num_retries=RETRIES), {"files": []})
+        self.assertEqual(Flaky.calls, 2)
 
 
 class Appending(unittest.TestCase):

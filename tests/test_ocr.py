@@ -54,7 +54,8 @@ class FakeVision:
         self.body = body
         return self
 
-    def execute(self):
+    def execute(self, num_retries=0):
+        self.num_retries = num_retries
         if self._raises is not None:
             raise self._raises
         return self._response
@@ -66,6 +67,15 @@ def reader_raising(error: Exception) -> GoogleVisionReader:
 
 def reader_returning(response: dict) -> GoogleVisionReader:
     return GoogleVisionReader(FakeVision(response=response))
+
+
+class Retrying(unittest.TestCase):
+    def test_vision_is_retried_before_giving_up(self):
+        from mousai.sheets import RETRIES
+
+        vision = FakeVision(response={"responses": [{}]})
+        GoogleVisionReader(vision).read_image(IMAGE, "image/jpeg")
+        self.assertEqual(vision.num_retries, RETRIES)
 
 
 class NeverBreaksTheManualPath(unittest.TestCase):

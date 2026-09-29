@@ -217,7 +217,9 @@ class Bot:
         saved, the operators what broke. The caller logs the traceback."""
         google = type(error).__module__.split(".")[0] in ("googleapiclient", "google", "httplib2")
         kind = "sheets" if google or isinstance(error, OSError) else "bot"
-        told = [Send(incoming.chat_id, render.say("bot_failed"))] if incoming.private else []
+        # Say which: a network failure reads like a problem with the receipt.
+        said = render.say("bot_failed_sheets" if kind == "sheets" else "bot_failed")
+        told = [Send(incoming.chat_id, said)] if incoming.private else []
         return told + self._alert(kind, failure(error))
 
     def restarted(self, since: str) -> list[Send]:
