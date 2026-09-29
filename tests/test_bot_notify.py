@@ -38,7 +38,7 @@ class Keepers(Base):
     def test_the_other_keepers_hear_of_each_saved_entry(self):
         replies = self.press(ok(self.photo("รับรองลูกค้า")))
         (told,) = to(replies, OWNER)
-        for part in ("มน", "ค่าขนมปังรับรองลูกค้า", "23.00", PAGE, "แถว 21"):
+        for part in ("สมศรี", "ค่าขนมปังรับรองลูกค้า", "23.00", PAGE, "แถว 21"):
             self.assertIn(part, told)
         # Not the Keeper who saved it, not the Recorder, not an operator alone.
         self.assertEqual(to(replies, OPERATOR), [])

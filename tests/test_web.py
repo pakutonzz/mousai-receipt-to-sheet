@@ -298,8 +298,9 @@ class PagePicker(unittest.TestCase):
 
 class RequesterPicker(unittest.TestCase):
     def test_offers_names_already_used_in_the_column(self):
-        client, _, _ = build()
-        self.assertIn('name="requester" value="Monny"', client.get("/").text)
+        client, service, _ = build()
+        used = Workbook(service, BOOK).requesters()[0]
+        self.assertIn(f'name="requester" value="{used}"', client.get("/").text)
 
     def test_always_offers_the_dash_and_a_manual_option(self):
         client, _, _ = build()
@@ -318,15 +319,16 @@ class RequesterPicker(unittest.TestCase):
 
     def test_choosing_a_name_writes_that_name(self):
         client, service, _ = build()
-        confirm(client, requester="Monny")
+        used = Workbook(service, BOOK).requesters()[0]
+        confirm(client, requester=used)
         column = column_index(PETTY_CASH.requester) - 1
-        self.assertEqual(written(service)[column], {"stringValue": "Monny"})
+        self.assertEqual(written(service)[column], {"stringValue": used})
 
     def test_a_typed_name_is_used_when_other_is_chosen(self):
         client, service, _ = build()
-        confirm(client, requester=OTHER, requester_other="พี่นวล")
+        confirm(client, requester=OTHER, requester_other="พี่สมหญิง")
         column = column_index(PETTY_CASH.requester) - 1
-        self.assertEqual(written(service)[column], {"stringValue": "พี่นวล"})
+        self.assertEqual(written(service)[column], {"stringValue": "พี่สมหญิง"})
 
     def test_other_with_nothing_typed_falls_back_to_the_dash(self):
         client, service, _ = build()
@@ -336,8 +338,8 @@ class RequesterPicker(unittest.TestCase):
 
     def test_a_typed_name_shows_in_the_cells(self):
         client, _, _ = build()
-        body = preview(client, requester=OTHER, requester_other="พี่อ้อ")
-        self.assertEqual(cell(body, "H21"), "พี่อ้อ")
+        body = preview(client, requester=OTHER, requester_other="พี่แอน")
+        self.assertEqual(cell(body, "H21"), "พี่แอน")
 
 
 class LivePreview(unittest.TestCase):
@@ -643,7 +645,7 @@ class Confirm(unittest.TestCase):
                 amount="99",
                 description="ค่ากาแฟ",
                 requester=OTHER,
-                requester_other="พี่นวล",
+                requester_other="พี่สมหญิง",
                 key="stale",
             ),
         )
@@ -652,7 +654,7 @@ class Confirm(unittest.TestCase):
         self.assertEqual(rendered_value(body, "amount"), "99")
         self.assertEqual(rendered_value(body, "description"), "ค่ากาแฟ")
         self.assertEqual(rendered_value(body, "entry_date"), "2026-08-03")
-        self.assertIn('name="requester" value="พี่นวล" checked', body)
+        self.assertIn('name="requester" value="พี่สมหญิง" checked', body)
 
     def test_posting_the_same_confirm_twice_writes_once(self):
         """A double tap, or a resend. The first write moves the free row, so the

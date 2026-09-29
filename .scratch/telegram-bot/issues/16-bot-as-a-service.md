@@ -30,11 +30,11 @@ on `kickstart -k`, logout and shutdown; found at start, the last run crashed,
 was killed, or lost power. README: restarting both services, the bot's log,
 pulling a new version.
 
-Found on the Mac for the reboot check: FileVault is off, but automatic login is
-set to another account, while the web page, the bot and Ollama all run in
-`rukz`'s session. After a reboot none of them starts until someone logs in as
-`rukz`. Two ways out, a person's choice since both change the Mac's security
-settings: set automatic login to `rukz` (keeps deploys sudo-free and brings
-Ollama up too), or move the services to LaunchDaemons with `UserName rukz`
-(starts at boot whoever logs in, but every restart then needs sudo, and Ollama
-would need the same). Then reboot and message the bot.
+Found on the Mac for the reboot check: automatic login is set to a different
+account from the one that runs the web page, the bot and Ollama, so after a
+reboot none of them starts until someone logs in to that account. Two ways out,
+a person's choice since both change the Mac's login settings: set automatic
+login to the services' account (keeps deploys sudo-free and brings Ollama up
+too), or move the services to LaunchDaemons that run as that account (starts at
+boot whoever logs in, but every restart then needs sudo, and Ollama would need
+the same). Then reboot and message the bot.

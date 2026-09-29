@@ -14,7 +14,7 @@ Earlier agreements with the clinic are in the handoff pack of 16 Sep 2026
 (D01–D11). This spec follows D05 (others queue for the Keeper), D06 (outside AI
 may read receipt photos, not patient data), D08 (the Keeper picks the Page) and
 D09 (a full Page holds items; no Page is ever opened automatically). D02/D04
-(Excel on the office PC) are superseded once มน moves to the Google Sheet.
+(Excel on the office PC) are superseded once the bookkeeper moves to the Google Sheet.
 
 ## Who
 
@@ -22,7 +22,7 @@ D09 (a full Page holds items; no Page is ever opened automatically). D02/D04
   default Requester, listed by hand in a config file. Anyone not on the list who
   messages the bot is told their Telegram ID and to ask the operator, and the
   operator is told they asked. Nothing else happens.
-- **Keepers** (มน and the clinic's owner to start) may confirm. A Keeper is also
+- **Keepers** (the bookkeeper and the clinic's owner to start) may confirm. A Keeper is also
   a Recorder: their own receipts skip the Queue.
 - **The operator** (the person running the system) receives access requests and
   system failures, not book matters.
@@ -123,7 +123,7 @@ boot.
 - Top-ups (ยอดรับ) through the bot.
 - Writing the receipt-substitute certificate itself.
 - Any deployment reachable from the internet, and a login for the web page.
-- Moving มน's real book: a change of `MOUSAI_DRIVE_FOLDER_ID` and a share with
+- Moving the real book: a change of `MOUSAI_DRIVE_FOLDER_ID` and a share with
   the service account when she is ready.
 
 ## Build order

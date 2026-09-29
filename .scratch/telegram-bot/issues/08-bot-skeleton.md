@@ -1,6 +1,6 @@
 # The bot: long polling and the door
 
-Status: ready-for-human
+Status: resolved
 Blocked by: 06
 
 ## Scope
@@ -35,3 +35,8 @@ request to the placeholder operator failed with "Chat not found", which showed
 that one failed send aborted the rest of the batch; sends are now independent
 and a failure is one warning line. Left: a message from a listed Keeper after
 the people file has real IDs.
+
+**2026-09-29, agent.** Live check done: the Keeper listed in the Mac's
+`people.toml` has used the bot throughout (41 photos and button presses in the
+log), greeted and served as a Keeper. Resolved. Three example IDs are still in
+that `people.toml` and only cost a "Chat not found" line per notification.

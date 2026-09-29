@@ -1,6 +1,6 @@
 # A Keeper hands in a receipt and confirms it
 
-Status: ready-for-human
+Status: resolved
 Blocked by: 01, 02, 04, 07, 08
 
 The first complete path: a Keeper's own receipt, no Queue.
@@ -38,3 +38,8 @@ the 24-hour expiry refuse the buttons; someone else's buttons do nothing.
 A Recorder's Review has no confirm button yet (ticket 10 adds hand-in).
 Typed free-form corrections are ticket 05. Left: the live check on the Mac,
 a real photo becoming a real row in the scratch Workbook.
+
+**2026-09-29, agent.** Live check done on the Mac: two receipt photos were
+confirmed by the Keeper and written to the current Workbook (the store holds two
+confirmed Transactions, both with photos, and two recorded photos; the log shows
+each confirm's saved message). Resolved.

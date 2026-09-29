@@ -325,7 +325,7 @@
   </div>
   <div>
     <h1>{% block heading %}บันทึกค่าใช้จ่าย{% endblock %}</h1>
-    <div class="sub">{% block sub %}คลินิก มูไซ เวลเนส เซนเตอร์{% endblock %}</div>
+    <div class="sub">{% block sub %}{{ clinic_name or "" }}{% endblock %}</div>
   </div>
 </header>
 {% block body %}{% endblock %}

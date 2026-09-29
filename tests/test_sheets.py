@@ -359,22 +359,29 @@ class WritablePages(unittest.TestCase):
 
 class Requesters(unittest.TestCase):
     def test_harvested_from_the_column_most_used_first(self):
-        service = FakeService(
-            {n: grid_for(n) for n in ("เงินสดย่อย6", "เงินฉุกเฉิน3")},
-            {"เงินสดย่อย6": 1, "เงินฉุกเฉิน3": 2},
-        )
-        found = Workbook(service, "fake-id").requesters()
-        self.assertEqual(found[0], "Monny")
-        self.assertNotIn("-", found)
-        self.assertNotIn("", found)
+        grid = grid_for("เงินสดย่อย6")
+        page = Page("เงินสดย่อย6", PETTY_CASH, grid)
+        column = column_index(PETTY_CASH.requester) - 1
+        rows = list(range(page.first_row, page.last_row + 1))
+        # The snapshot's own names are cleared: they are real people.
+        for number in rows:
+            line = grid[number - 1]
+            if column < len(line):
+                line[column] = ""
+        for number, name in zip(rows, ["สมศรี", "สมหญิง", "สมศรี", "-", "สมศรี"]):
+            line = grid[number - 1]
+            line.extend([""] * (column + 1 - len(line)))
+            line[column] = name
+        service = FakeService({"เงินสดย่อย6": grid}, {"เงินสดย่อย6": 1})
+        self.assertEqual(Workbook(service, "fake-id").requesters(), ["สมศรี", "สมหญิง"])
 
     def test_a_name_typed_once_shows_up_next_time(self):
         """Why there is no separate list to maintain."""
         grid = grid_for("เงินสดย่อย6")
-        grid[20][column_index(PETTY_CASH.requester) - 1] = "พี่นวล"
+        grid[20][column_index(PETTY_CASH.requester) - 1] = "พี่สมหญิง"
         grid[20][column_index(PETTY_CASH.description) - 1] = "ค่ารถ"
         service = FakeService({"เงินสดย่อย6": grid}, {"เงินสดย่อย6": 1})
-        self.assertIn("พี่นวล", Workbook(service, "fake-id").requesters())
+        self.assertIn("พี่สมหญิง", Workbook(service, "fake-id").requesters())
 
     def test_a_workbook_with_no_pages_yields_no_names(self):
         service = FakeService({}, {"แจกแจง": 1})

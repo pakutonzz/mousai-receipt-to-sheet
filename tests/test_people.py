@@ -23,7 +23,7 @@ from mousai.people import (  # noqa: E402
 MINIMAL = """
 [[person]]
 telegram_id = 1
-name = "มน"
+name = "สมศรี"
 roles = ["keeper", "operator"]
 """
 
@@ -61,7 +61,7 @@ class TheExample(unittest.TestCase):
         self.assertFalse(operator.may_hand_in)
 
     def test_requester_defaults_to_the_name(self):
-        self.assertEqual(self.people.get(111111111).requester, "มน")
+        self.assertEqual(self.people.get(111111111).requester, "สมศรี")
         self.assertEqual(self.people.get(222222222).requester, "-")
 
     def test_keepers_and_operators(self):
@@ -79,7 +79,7 @@ class Refusals(unittest.TestCase):
     def test_missing_fields(self):
         for field in ("telegram_id", "name", "roles"):
             text = MINIMAL.replace(
-                {"telegram_id": "telegram_id = 1\n", "name": 'name = "มน"\n',
+                {"telegram_id": "telegram_id = 1\n", "name": 'name = "สมศรี"\n',
                  "roles": 'roles = ["keeper", "operator"]\n'}[field], ""
             )
             with self.subTest(field=field):
@@ -104,7 +104,7 @@ class Refusals(unittest.TestCase):
         self.assertEqual(refused(text), "people_missing_field")
 
     def test_the_same_id_twice(self):
-        text = MINIMAL + MINIMAL.replace('"มน"', '"คนอื่น"')
+        text = MINIMAL + MINIMAL.replace('"สมศรี"', '"คนอื่น"')
         notice = refusal(lambda: parse(text))
         self.assertEqual(notice.code, "people_duplicate_id")
         self.assertIn("1", english(notice))

@@ -32,7 +32,7 @@ def draft(**overrides) -> Draft:
         on=dt.date(2026, 9, 14),
         description="ค่าขนมรับรองลูกค้า",
         amount=299.0,
-        requester="พี่นวล",
+        requester="พี่สมหญิง",
         note=None,
     )
     fields.update(overrides)

@@ -8,7 +8,7 @@ Two more jobs for the local model, each with a rule-based fallback.
 ## Scope
 
 - **Corrections.** A message typed while a Review is open ("จำนวนเงินผิด 120",
-  "ใส่เงินฉุกเฉิน", "ผู้เบิก Aor") becomes a set of field changes, which the bot
+  "ใส่เงินฉุกเฉิน", "ผู้เบิก Ann") becomes a set of field changes, which the bot
   shows as an updated Review. Anything the model cannot map to a field is
   answered with "ใช้ปุ่มแก้ไขแทน". The fields are the Review's editable ones, and
   a Page or Requester must be one that exists.

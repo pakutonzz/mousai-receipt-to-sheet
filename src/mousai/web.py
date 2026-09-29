@@ -151,6 +151,7 @@ def create_app(
     wall=time.time,
     read_limits: tuple[int, int] = (READS_PER_HOUR, READS_PER_DAY),
     describer=None,
+    clinic_name: str = "",
 ) -> FastAPI:
     """The app. With a passcode, everything but /login and /health needs a
     session. Without one it is open, which only suits a trusted local network.
@@ -158,6 +159,8 @@ def create_app(
     # No interactive API console: it would be a second, unguarded front door
     # to everything the page does.
     app = FastAPI(title="mousai", docs_url=None, redoc_url=None, openapi_url=None)
+    # Shown under the page title. From the machine's .env, so the code names no clinic.
+    TEMPLATES.env.globals["clinic_name"] = clinic_name
     state: dict = {"sheets": sheets, "reader": reader, "describer": describer}
     sessions = Sessions(session_secret or os.urandom(32), wall=wall)
     tries_by_client = Limiter(TRIES_PER_CLIENT, TRIES_WINDOW, clock)
@@ -534,6 +537,7 @@ def settings_from_env() -> dict:
     return {
         "passcode": env.get("MOUSAI_PASSCODE") or None,
         "session_secret": secret.encode("utf-8") if secret else None,
+        "clinic_name": (env.get("MOUSAI_CLINIC_NAME") or "").strip(),
     }
 
 
