@@ -1,7 +1,7 @@
 # mousai
 
 Photograph a receipt, check what it says, and it lands in the right row of the
-clinic's cash Workbook in Google Sheets.
+clinic's cash Workbook in Google Sheets. From a web page, or from a Telegram bot.
 
 The Workbook is a set of printable, signable forms rather than a table — a
 document head, a table of entries, a totals line, a signature block. So the hard
@@ -9,8 +9,90 @@ part was never reading receipts. It was writing back into a form, across several
 different layouts, without breaking it.
 
 - **What the words mean:** [CONTEXT.md](CONTEXT.md)
-- **What was agreed and why:** [.scratch/receipt-to-sheet/spec.md](.scratch/receipt-to-sheet/spec.md)
+- **What was agreed and why:** [.scratch/receipt-to-sheet/spec.md](.scratch/receipt-to-sheet/spec.md) and, for the bot, [.scratch/telegram-bot/spec.md](.scratch/telegram-bot/spec.md)
 - **The two decisions worth recording:** [docs/adr](docs/adr)
+
+## วิธีใช้งาน (How to use it)
+
+บันทึกได้สองทาง ผ่าน **Telegram bot** (ทางหลัก ใช้จากโทรศัพท์ได้ทุกที่) หรือผ่าน **หน้าเว็บ**
+ทั้งสองทางมีกติกาเดียวกัน: แอปแสดงหน้าตรวจสอบว่าจะเขียนอะไรลงแถวไหน และ
+**ไม่มีอะไรถูกเขียนลงชีตจนกว่าจะกดยืนยัน**
+
+### ใครทำอะไรได้
+
+รายชื่ออยู่ในไฟล์ `people.toml` บนเครื่องที่รัน bot (ดูตัวอย่างใน `people.example.toml`)
+แก้ไฟล์แล้วมีผลทันทีโดยไม่ต้องรีสตาร์ท
+
+| บทบาท | ใน `people.toml` | ทำอะไรได้ |
+| --- | --- | --- |
+| ผู้ดูแลสมุด (Keeper) | `keeper` | ส่งใบเสร็จแล้วยืนยันลงสมุดเองได้ ตรวจและยืนยันหรือปฏิเสธรายการในคิว ได้รับแจ้งทุกรายการที่บันทึก |
+| ผู้บันทึก (Recorder) | `recorder` | ส่งใบเสร็จ แก้ไข แล้ว **ส่งให้ตรวจ** รายการเข้าคิวรอผู้ดูแลสมุด ได้รับแจ้งผลเมื่อมีคนตรวจ |
+| ผู้ดูแลระบบ (operator) | `operator` | ได้รับแจ้งเมื่อมีคนขอใช้งาน และเมื่อระบบขัดข้อง ไม่ได้รับเรื่องบัญชี (ยกเว้นเป็นผู้ดูแลสมุดด้วย) |
+
+คนที่ไม่อยู่ในรายชื่อส่งข้อความหา bot จะได้รับรหัส Telegram ของตัวเองกลับไป ให้ส่งรหัสนั้นให้
+ผู้ดูแลระบบเพิ่มลงใน `people.toml` ส่วนผู้ดูแลระบบจะได้รับแจ้งว่ามีคนขอใช้งาน
+bot ตอบเฉพาะแชทส่วนตัว ไม่ตอบในกลุ่ม
+
+### ใช้ผ่าน Telegram bot
+
+1. **ส่งรูปใบเสร็จ** ใบเสร็จร้านค้า หรือสลิปโอนเงิน/จ่ายบิล (K PLUS, กรุงไทย, SCB, ttb, เป๋าตัง
+   ฯลฯ) ก็ได้ ใส่ข้อความใต้รูปว่า **ใช้เพื่ออะไร** เช่น `รับรองลูกค้า` ถ้าไม่ใส่ bot จะถามพร้อมปุ่ม
+   ให้เลือก ระหว่างอ่านจะขึ้น "⏳ กำลังอ่านใบเสร็จ…" (ใช้เวลาราว 5–15 วินาที)
+   - ส่งหลายรูปพร้อมกันได้ แต่ละรูปเป็นหนึ่งรายการ และถามว่าใช้เพื่ออะไรครั้งเดียว
+   - ถ้ารูปนี้เคยบันทึกไปแล้ว หน้าตรวจสอบจะเตือนว่าอยู่หน้าไหนแถวไหน
+2. **หน้าตรวจสอบ** bot อ่านยอดเงินและวันที่ ร่างรายละเอียดด้วยโมเดลบนเครื่อง แล้วแสดง
+   ไฟล์ · หน้า · แถว, ยอดจ่าย, วันที่, คงเหลือก่อน → หลัง, คำเตือน (เช่น คงเหลือติดลบ
+   หน้าใกล้เต็ม ย้อนวันที่) และเซลล์ที่จะเขียนพร้อมชื่อคอลัมน์
+   ถ้าอ่านยอดเงินหรือรายละเอียดไม่ได้ bot จะถามให้พิมพ์
+3. **แก้ไข** กดปุ่ม **แก้ไข** แล้วเลือกช่อง (จำนวนเงิน · วันที่ · รายละเอียด · ผู้เบิก ·
+   หมายเหตุ · หน้า · ไฟล์) หรือพิมพ์แก้เป็นประโยคได้เลย เช่น
+   `จำนวนเงินผิด 120` · `ใส่เงินฉุกเฉิน` · `ผู้เบิก มน` · `ของเมื่อวาน` · `ลบหมายเหตุ`
+   ถ้า bot ไม่แน่ใจว่าจะแก้ช่องไหน จะบอกให้ใช้ปุ่มแทน
+4. **ยืนยัน** ผู้ดูแลสมุดกด **ยืนยันบันทึก** รายการจึงถูกเขียนลงชีต ผู้บันทึกกด **ส่งให้ตรวจ**
+   ทุกคนกด **ยกเลิก** ได้ ถ้าระหว่างนั้นมีคนเขียนลงหน้าเดียวกันก่อน bot จะไม่เขียน แต่ส่ง
+   หน้าตรวจสอบใหม่มาให้ยืนยันอีกครั้ง รายการที่ยังไม่ส่งตรวจหรือยืนยัน หมดอายุใน 24 ชั่วโมง
+5. **ไม่มีใบเสร็จ** พิมพ์เป็นข้อความ เช่น `ค่าน้ำแข็ง 45` หรือ `ค่าส่งของ 60 เมื่อวาน`
+   ช่องหมายเหตุจะได้ **ไม่มีใบเสร็จ** และ bot จะเตือนให้ทำใบรับรองแทนใบเสร็จ
+
+**คิว (สำหรับผู้ดูแลสมุด)** เมื่อผู้บันทึกส่งให้ตรวจ ผู้ดูแลสมุดทุกคนได้การ์ดพร้อมรูปใบเสร็จ
+กด **เปิดดู** เพื่อดูหน้าตรวจสอบที่คำนวณใหม่ ณ ตอนนั้น แก้ไขได้ทุกช่อง แล้ว **ยืนยันบันทึก** หรือ
+**ปฏิเสธ** (เลือกเหตุผล ซ้ำ · ไม่ใช่ค่าใช้จ่ายของคลินิก · ข้อมูลไม่ครบ หรือพิมพ์เอง)
+คนแรกที่กดเป็นคนตัดสิน การ์ดของคนอื่นจะเปลี่ยนเป็นบอกว่าใครทำอะไร และผู้บันทึกได้รับแจ้งผล
+รายการในคิวไม่หมดอายุ และถ้ายังมีค้าง จะมีเตือนวันละครั้งตอน 9 โมง
+
+**หน้าเต็ม** bot ไม่เปิดหน้าใหม่ให้เอง ให้เปิดหน้าใหม่ใน Google Sheets แล้วเลือกหน้าด้วยปุ่ม
+**หน้า** ระหว่างนั้นผู้ดูแลสมุดกด **พักไว้ในคิว** ได้ เมื่อบันทึกลงหน้าที่ไม่ใช่หน้าหลักของกองทุน
+bot จะถามว่าจะใช้หน้านั้นเป็นหน้าหลักต่อไปหรือไม่
+
+| พิมพ์ / กด | ผล |
+| --- | --- |
+| รูปใบเสร็จหรือสลิป (+ ข้อความใต้รูป) | เริ่มรายการใหม่ |
+| `ค่าน้ำแข็ง 45` (ไม่มีรายการเปิดอยู่) | รายการไม่มีใบเสร็จ |
+| `จำนวนเงินผิด 120` (มีรายการเปิดอยู่) | แก้รายการที่เปิดอยู่ |
+| `/คิว` | ดูรายการที่รอตรวจ (ผู้บันทึกเห็นเฉพาะของตัวเอง) |
+| `/start` | ข้อความต้อนรับตามบทบาท |
+
+**แจ้งเตือน** ผู้ดูแลสมุดคนอื่นได้รับแจ้งทุกครั้งที่มีการบันทึก (ใคร อะไร เท่าไร หน้าไหนแถวไหน
+คงเหลือ) พร้อมเตือนเมื่อหน้าเหลือไม่เกิน 2 แถว คงเหลือติดลบ หรือไม่มีใบเสร็จ
+ผู้ดูแลระบบได้รับแจ้งเมื่อการอ่านใบเสร็จ โมเดล Google Sheets หรือตัว bot ขัดข้อง
+(ไม่เกินชั่วโมงละครั้งต่อเรื่อง) และเมื่อ bot กลับมาทำงานหลังหยุดไปโดยไม่ได้ตั้งใจ
+
+### ใช้ผ่านหน้าเว็บ
+
+1. เปิดหน้าเว็บ (บน Mac mini ต้องเปิดผ่าน SSH tunnel ดู "On the Mac mini" ด้านล่าง)
+2. เลือกไฟล์และหน้าที่จะบันทึก ค่าเริ่มต้นคือไฟล์ของเดือนปัจจุบันและหน้าหลักของเงินสดย่อย
+3. กด **ถ่ายรูป** หรือ **เลือกรูป** แอปอ่านยอดเงิน วันที่ และร่างรายละเอียดให้ ช่องที่มาจาก
+   ใบเสร็จจะมีป้าย "จากใบเสร็จ" / "ร่างจากใบเสร็จ" แก้ได้ทุกช่อง และพิมพ์เองทั้งหมดก็ได้
+4. **รายละเอียดต้องมีเสมอ** บอกว่าซื้ออะไร เพื่ออะไร เช่น `ค่าขนมปังรับรองลูกค้า`
+5. กด **ตรวจสอบก่อนบันทึก** จะขึ้นหน้าต่างแสดงแถวและเซลล์ที่จะเขียน แล้วกด **ยืนยันบันทึก**
+   เปิดสวิตช์ "จำหน้านี้ไว้" ถ้าต้องการให้หน้านี้เป็นหน้าหลักของกองทุนต่อจากนี้
+
+### ถ่ายรูปอย่างไรให้อ่านได้
+
+- ให้เห็นบรรทัดยอดรวม/ยอดสุทธิ และวันที่ชัด ๆ ไม่ต้องตรงเป๊ะ รูปเอียงหรือถ่ายแนวนอนก็อ่านได้
+- สลิปโอนเงิน ใช้ภาพที่แอปธนาคารบันทึกไว้ได้เลย ไม่ต้องถ่ายหน้าจอซ้ำ
+- วันที่ที่ห่างจากวันนี้เกิน 2 ปี แอปจะไม่ใช้ (กันเลขอื่นที่หน้าตาเหมือนวันที่) ให้พิมพ์เอง
+- อ่านผิดหรืออ่านไม่ได้ไม่เป็นไร หน้าตรวจสอบมีไว้ให้แก้ก่อนบันทึกเสมอ
 
 ## เริ่มต้นใช้งาน (Quick start)
 
@@ -70,18 +152,11 @@ python scripts/bot.py
 
 ต้องมี `TELEGRAM_BOT_TOKEN` ใน `.env` (สร้าง bot กับ @BotFather) และไฟล์ `people.toml`
 (คัดลอกจาก `people.example.toml` แล้วใส่รหัส Telegram ของแต่ละคน) บน Mac mini bot รันเป็น
-service `com.mousai.bot` อยู่แล้ว ดูหัวข้อ "On the Mac mini" ด้านล่าง
+service `com.mousai.bot` อยู่แล้ว ดูหัวข้อ "On the Mac mini" ด้านล่าง วิธีใช้ bot อยู่ใน
+"วิธีใช้งาน" ด้านบน
 
-ผู้ดูแลสมุด (Keeper) ส่งรูปใบเสร็จ ใส่ข้อความใต้รูปว่าใช้เพื่ออะไร bot อ่านยอดเงินกับวันที่
-ร่างรายละเอียดด้วยโมเดลบนเครื่อง แล้วส่งหน้าตรวจสอบกลับมาพร้อมปุ่ม ยืนยันบันทึก · แก้ไข · ยกเลิก
-ไม่มีอะไรถูกเขียนลงชีตจนกว่าจะกดยืนยัน ระหว่างที่รายการเปิดอยู่ พิมพ์แก้ได้เลย เช่น
-`จำนวนเงินผิด 120` หรือ `ใส่เงินฉุกเฉิน` ส่วนค่าใช้จ่ายที่ไม่มีใบเสร็จ พิมพ์มาเป็นข้อความ เช่น
-`ค่าน้ำแข็ง 45` ช่องหมายเหตุจะได้ **ไม่มีใบเสร็จ**
-
-ผู้บันทึก (Recorder) ที่ไม่ใช่ผู้ดูแลสมุด กด **ส่งให้ตรวจ** แทนการยืนยัน รายการจะเข้าคิว และผู้ดูแลสมุด
-ทุกคนได้รับการ์ดพร้อมรูปใบเสร็จ กด เปิดดู แล้วยืนยันหรือปฏิเสธ (พร้อมเหตุผล) คนแรกที่กดเป็นคนตัดสิน
-ผู้บันทึกจะได้รับแจ้งผลทุกครั้ง พิมพ์ `/คิว` เพื่อดูรายการที่รออยู่ และถ้ายังมีรายการค้าง
-ผู้ดูแลสมุดจะได้รับการเตือนวันละครั้งตอน 9 โมง
+ค่าเสริมใน `.env`: `MOUSAI_DESCRIBE_MODEL` (โมเดลใน Ollama ที่ใช้ร่างรายละเอียดและอ่านข้อความที่พิมพ์
+ถ้าไม่ตั้ง bot จะถามให้พิมพ์และใช้กฎแทน), `MOUSAI_OLLAMA_URL`, `MOUSAI_PEOPLE_FILE`, `MOUSAI_STORE`
 
 ### 6. โครงสร้าง Google Sheet / columns ที่ใช้
 
@@ -253,6 +328,19 @@ are marked known-hard and do not fail the build, both because Vision loses the f
 its label before any rule could help. Run `python -m unittest discover -s tests` and the
 scoreboard prints.
 
+It also reads **bank transfer and e-wallet slips** (K PLUS, Krungthai, SCB, ttb, เป๋าตัง):
+the amount sent is on `จำนวนเงิน`, `จำนวนเงินที่ชำระ` or `จำนวน:`, and the government's
+co-payment share, fees and negative figures are never taken for it. **Photos taken
+sideways**, whose rotation lives only in the EXIF tag, are turned upright before the lines
+are rebuilt. Nine real slips and receipts checked this against, all amounts right, are
+kept on one machine only (`sample/thai-banks/` and `sample/up-to-date/` are gitignored:
+they carry names and account numbers), so the committed tests imitate their lines instead.
+
+The **Description** is drafted separately, by a local model through Ollama
+(`src/mousai/describe.py`), from what the receipt says was bought and what the person
+said it was for. It never reads or changes the amount or the date. Receipt text and
+people's words stay on the machine that runs the model.
+
 ## How it fits together
 
 | | |
@@ -262,6 +350,13 @@ scoreboard prints.
 | `src/mousai/sheets.py` | The only code that talks to Google. |
 | `src/mousai/receipt.py` | Amount, date and description out of receipt text. Pure. |
 | `src/mousai/ocr.py` | Google Cloud Vision. Any failure degrades to typing. |
+| `src/mousai/review.py` | The `Desk`: every way in makes a Review and confirms through it, so what was shown is what gets written. |
+| `src/mousai/describe.py` | Drafts the Description with the local model. |
+| `src/mousai/typed.py` | Reads typed corrections and receipt-less spends: the model says which words are which, rules check them. |
+| `src/mousai/people.py` | Who may use the bot, and as what, from `people.toml`. |
+| `src/mousai/store.py` | The bot's SQLite store: Transactions in flight, the Queue, photos already recorded. |
+| `src/mousai/bot/core.py` | The bot's whole conversation, with no Telegram in it: plain values in, messages to send out. |
+| `src/mousai/bot/polling.py` | The only code that imports python-telegram-bot. Long polling, so nothing listens for the outside world. |
 | `src/mousai/messages.py` | Thai for the UI, English for the terminal. The domain emits codes. |
 | `src/mousai/web.py` | One page: photo and fields, then a review popup with the cells to be written and the only Confirm. |
 
@@ -296,7 +391,8 @@ python scripts/extract_baseline.py "เบิกจ่ายเงินสด �
 
 The receipt fixtures, by contrast, **are** committed, along with the `sample/` images
 they came from — public sample receipts, nothing from the clinic. Re-capture them with
-`python scripts/capture_receipts.py` if Vision's output ever changes.
+`python scripts/capture_receipts.py` if Vision's output ever changes. It skips any sample
+git ignores, so real slips kept locally never reach the fixtures.
 
 ## Scripts
 
@@ -309,9 +405,14 @@ they came from — public sample receipts, nothing from the clinic. Re-capture t
 | `add_entry.py` | Record an Entry from the terminal. |
 | `capture_receipts.py` | One-off: snapshot Vision's output for `sample/` as test fixtures. |
 | `serve.py` | Run the web UI. |
+| `bot.py` | Run the Telegram bot. |
+| `eval_describer.py` | Measure a local model drafting Descriptions for the sample receipts. |
+| `eval_typed.py` | Measure the model reading typed corrections and spends, from `tests/fixtures/typed_phrasings.json`. |
 
 ## Not built, deliberately
 
 Top-ups and the Ledger sheets, creating a new Page when one fills, writing a
-ใบรับรองแทนใบเสร็จ alongside an Entry, and any automatic update of the summary
-sheets. A full Page reports an error and asks a person to open the next one.
+ใบรับรองแทนใบเสร็จ alongside an Entry (the bot only reminds the Keepers one is
+needed), and any automatic update of the summary sheets. A full Page reports
+an error and asks a person to open the next one. The model never reads amounts
+or dates; those stay with the rules in `receipt.py`.
