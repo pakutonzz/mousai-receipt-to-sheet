@@ -17,3 +17,9 @@ people.toml
 mousai.db
 mousai.db-journal
 mousai.db.running
+
+# Real receipts and bank transfer slips for trying the reader: they carry
+# names and account numbers. On this machine only; their Vision output is
+# never captured into tests/fixtures/receipts either.
+sample/thai-banks/
+sample/up-to-date/

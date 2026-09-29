@@ -21,6 +21,11 @@ from .messages import Notice
 FUZZY_MIN_LENGTH = 4
 FUZZY_THRESHOLD = 0.8
 
+# Keywords whose punctuation is the point, matched exactly or not at all:
+# "จำนวน:" is K PLUS's amount label, but one character off it is
+# "จำนวนของแห้ง: 1", a count on an order note.
+EXACT_ONLY = {"จำนวน:"}
+
 # Thai digits appear on some printers.
 THAI_DIGITS = str.maketrans("๐๑๒๓๔๕๖๗๘๙", "0123456789")
 
@@ -35,6 +40,9 @@ TOTAL_KEYWORDS = (
     "ยอดสุทธิ",
     "รวมสุทธิ",
     "ยอดชำระ",
+    # Wallet slips (เป๋าตัง, ถุงเงิน) list the price, then a government
+    # co-payment, then this: what actually left the wallet.
+    "จำนวนเงินที่ชำระ",
     "ชำระโดย",
     "จำนวนเงินรวม",
     # "price including VAT" is the grand total, not the tax line. It has to
@@ -47,8 +55,13 @@ TOTAL_KEYWORDS = (
     "total",
     "ยอดรวม",
     "รวมเงิน",
+    # A bank transfer or bill-payment slip has no total, only the amount sent.
+    "จำนวนเงิน",
     "สุทธิ",
     "รวม",
+    # K PLUS prints the label alone, "จำนวน:", with the figure on the next line.
+    # The colon keeps it from matching a quantity column header.
+    "จำนวน:",
 )
 
 # Thai has no spaces, but Vision returns it word-segmented, so a line arrives as
@@ -88,6 +101,11 @@ NOT_TOTAL = (
     "มัดจา",
     "deposit",
     "balance",
+    # The government's share on a co-payment scheme (ไทยช่วยไทย, คนละครึ่ง),
+    # which the fuzzy match otherwise takes for สุทธิ.
+    "สิทธิ",
+    # A transfer fee, usually 0.00.
+    "ค่าธรรมเนียม",
 )
 
 THAI_MONTHS = {
@@ -153,6 +171,40 @@ class Word:
         return abs(self.y1 - self.y0)
 
 
+def upright(words: list[Word]) -> list[Word]:
+    """The words as they would sit on a receipt held the right way up.
+
+    A phone photo taken sideways, or one whose rotation lives only in its EXIF
+    tag, reaches Vision on its side. Vision still reads the text, but its boxes
+    are in the image's own axes, so a receipt's lines stand vertical and the
+    whole price column looks like one line. When most words are taller than
+    they are wide the page is on its side; which way round is settled by the
+    order Vision read the words in, which runs down the page.
+    """
+    long = [w for w in words if len(w.text) >= 3]
+    tall = sum(abs(w.y1 - w.y0) > 1.5 * abs(w.x1 - w.x0) for w in long)
+    if not long or tall <= len(long) / 2:
+        # Upright, or near enough. Upside down is never guessed at: Vision's
+        # reading order is not strictly top to bottom (columns, right-aligned
+        # names), and on two real slips that guess turned a good page over.
+        return words
+    # (across, down) as functions of the image's own (x, y), for a page turned
+    # a quarter one way or the other.
+    turns = [lambda x, y: (-y, x), lambda x, y: (y, -x)]
+
+    def turned(turn) -> list[Word]:
+        out = []
+        for w in words:
+            (a0, d0), (a1, d1) = turn(w.x0, w.y0), turn(w.x1, w.y1)
+            out.append(Word(w.text, min(a0, a1), min(d0, d1), max(a0, a1), max(d0, d1)))
+        return out
+
+    def downward(candidate: list[Word]) -> int:
+        return sum(b.middle >= a.middle for a, b in zip(candidate, candidate[1:]))
+
+    return max((turned(turn) for turn in turns), key=downward)
+
+
 def group_lines(words: list[Word]) -> list[str]:
     """Rebuild lines from geometry rather than trusting Vision's reading order.
 
@@ -183,7 +235,7 @@ def _fuzzy_contains(line: str, keyword: str) -> bool:
     OCR loses characters to thumbs, folds and glare — a real sample has a thumb
     over the ย in ยอดรวม, leaving อดรวม, which no exact match will find.
     """
-    if len(keyword) < FUZZY_MIN_LENGTH:
+    if len(keyword) < FUZZY_MIN_LENGTH or keyword in EXACT_ONLY:
         return False
     span = len(keyword)
     best = 0.0
@@ -206,13 +258,22 @@ def _fuzzy_contains(line: str, keyword: str) -> bool:
 DECIMAL_COMMA = re.compile(r",(\d{2})(?!\d)")
 
 
+# Vision sometimes spells ำ as its two parts, nikhahit and sara aa: "จํานวน"
+# looks the same as "จำนวน" but matches none of the keywords.
+SARA_AM = ("\u0e4d\u0e32", "\u0e33")
+
+
 def normalise(text: str) -> str:
-    return DECIMAL_COMMA.sub(r".\1", text.translate(THAI_DIGITS).replace(" ", " "))
+    text = text.translate(THAI_DIGITS).replace(" ", " ").replace(*SARA_AM)
+    return DECIMAL_COMMA.sub(r".\1", text)
 
 
 def _money_on(line: str) -> list[float]:
     out = []
     for match in MONEY.finditer(line):
+        # "-168", "-0.46": a discount or a rounding, never what was paid.
+        if match.start() > 0 and line[match.start() - 1] in "-−":
+            continue
         try:
             out.append(float(match.group().replace(",", "")))
         except ValueError:
@@ -423,7 +484,7 @@ def read_layout(
     Preferred over `read()` whenever bounding boxes are available, because lines
     rebuilt from geometry keep a label and its right-column amount together.
     """
-    lines = group_lines(words)
+    lines = group_lines(upright(words))
     if not lines:
         return read(text, today=today)
 

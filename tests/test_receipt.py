@@ -18,6 +18,7 @@ from mousai.receipt import (  # noqa: E402
     parse_description,
     read,
     read_layout,
+    upright,
 )
 
 SEVEN_ELEVEN = """บริษัท ซีพี ออลล์ จำกัด (มหาชน)
@@ -166,6 +167,107 @@ class WholeReading(unittest.TestCase):
         for note in reading.notes:
             self.assertIsInstance(note, Notice)
             self.assertTrue(thai(note))
+
+
+
+class PaymentSlips(unittest.TestCase):
+    """Bank transfers and wallet payments, as Vision reads them (2026-09).
+
+    Written from real slips with every name and account number left out; the
+    slips themselves stay off the repo.
+    """
+
+    def test_a_wallet_slip_is_what_left_the_wallet(self):
+        # เป๋าตัง / ถุงเงิน under ไทยช่วยไทยพลัส: price, the state's share, paid.
+        text = "ค่า สินค้า / บริการ 280 บาท\nสิทธิ ไทย ช่วย ไทย พลัส -168 บาท\nจำนวน เงิน ที่ ชำระ 112 บาท"
+        self.assertEqual(parse_amount(text)[0], 112.0)
+
+    def test_the_states_share_is_never_the_amount(self):
+        """"สิทธิ" is one letter from "สุทธิ", which fuzzy matching took it for."""
+        text = "ค่า สินค้า / บริการ 59 บาท\nสิทธิ ไทย ช่วย ไทย พลัส -35.40 บาท"
+        self.assertNotEqual(parse_amount(text)[0], 35.40)
+
+    def test_a_transfer_slip(self):
+        text = "โอน เงิน สำเร็จ\nจำนวน เงิน 290.00\nค่าธรรมเนียม 0.00"
+        self.assertEqual(parse_amount(text)[0], 290.0)
+
+    def test_sara_am_spelt_in_two_parts(self):
+        """Vision sometimes writes ำ as nikhahit + sara aa; it looks identical."""
+        text = "จ\u0e4d\u0e32 น วน เงิน 10.00 บาท\nค่าธรรมเนียม 0.00 บาท"
+        self.assertEqual(parse_amount(text)[0], 10.0)
+
+    def test_k_plus_puts_the_amount_under_its_label(self):
+        text = "จำนวน :\n900.00 บาท\nค่าธรรมเนียม :\n0.00 บาท"
+        self.assertEqual(parse_amount(text)[0], 900.0)
+
+    def test_a_count_with_a_colon_is_not_an_amount(self):
+        self.assertIsNone(parse_amount("จำ น วน ของ แห้ง : 1\nจำ น วน ของ เย็น : 0")[0])
+
+    def test_a_negative_figure_is_a_discount_or_a_rounding(self):
+        text = "ยอดรวม 278.00\nปัดเศษ -0.46\nยอดรวมสุทธิ 297.00"
+        self.assertEqual(parse_amount(text)[0], 297.0)
+        self.assertEqual(parse_amount("ยอดชำระ -20.00 180.00")[0], 180.0)
+
+    def test_thai_months_with_a_two_digit_buddhist_year(self):
+        self.assertEqual(
+            parse_date("7 ก.ย. 69 15:04 น.", today=dt.date(2026, 9, 29))[0], dt.date(2026, 9, 7)
+        )
+
+
+def page(lines: list[list[str]], height=20, step=40) -> list[Word]:
+    """Words laid out the right way up: one row per line, left to right."""
+    words = []
+    for row, line in enumerate(lines):
+        x = 10
+        for text in line:
+            width = 12 * len(text)
+            words.append(Word(text, x, row * step, x + width, row * step + height))
+            x += width + 200
+    return words
+
+
+def turned(words: list[Word], clockwise: bool) -> list[Word]:
+    """The same page photographed on its side: a quarter turn of every box."""
+    out = []
+    for w in words:
+        if clockwise:
+            box = (-w.y1, w.x0, -w.y0, w.x1)
+        else:
+            box = (w.y0, -w.x1, w.y1, -w.x0)
+        out.append(Word(w.text, *box))
+    return out
+
+
+STEAK = [
+    ["ใบแจ้งยอด"],
+    ["สเต็กอกไก่ทอด", "1", "119.00"],
+    ["น้ำเปล่า", "2", "24.00"],
+    ["ยอดรวม", "278.00"],
+    ["ยอดรวมก่อน", "VAT", "278.00"],
+    ["ปัดเศษ", "-0.46"],
+    ["ยอดรวมสุทธิ", "297.00"],
+]
+
+
+class Sideways(unittest.TestCase):
+    """A photo whose rotation lives in its EXIF tag reaches Vision on its side."""
+
+    def test_either_quarter_turn_reads_like_the_upright_page(self):
+        for clockwise in (True, False):
+            with self.subTest(clockwise=clockwise):
+                reading = read_layout(turned(page(STEAK), clockwise))
+                self.assertEqual(reading.amount, 297.0)
+
+    def test_an_upright_page_is_left_alone(self):
+        words = page(STEAK)
+        self.assertEqual(upright(words), words)
+
+    def test_an_upright_page_is_never_turned_over(self):
+        """Reading order is not strictly top to bottom: a right-aligned line
+        read first must not make the page look upside down."""
+        words = page(STEAK)
+        shuffled = words[3:] + words[:3]
+        self.assertEqual(upright(shuffled), shuffled)
 
 
 if __name__ == "__main__":
