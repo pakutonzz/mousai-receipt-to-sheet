@@ -28,6 +28,14 @@ SCOPES = [
 
 SPREADSHEET_MIME = "application/vnd.google-apps.spreadsheet"
 
+# Every Google call is retried, with the client library's backoff (up to 2, 4
+# and 8 seconds), on a dropped connection, a timeout, a 429 or a 5xx. After a
+# night idle, the first call renews the access token over a connection that
+# may have gone stale, and without a retry that one hiccup failed the receipt.
+# Writing twice is harmless: an Entry is cells at a row worked out beforehand,
+# so a repeat writes the same values to the same cells.
+RETRIES = 3
+
 # Hidden, so it never prints and never shows in the sheet tab strip.
 CONFIG_SHEET = "_mousai"
 CONFIG_HEADER = ["fund", "active_page"]
@@ -200,7 +208,7 @@ class Sheets:
                 fields="files(id,name,modifiedTime)",
                 pageSize=100,
             )
-            .execute()
+            .execute(num_retries=RETRIES)
         )
         return [
             WorkbookRef(id=f["id"], title=f["name"], modified=f["modifiedTime"])
@@ -227,7 +235,7 @@ class Workbook:
             self._meta = (
                 self._service.spreadsheets()
                 .get(spreadsheetId=self.id, fields="properties.title,sheets.properties")
-                .execute()
+                .execute(num_retries=RETRIES)
             )
         return self._meta
 
@@ -268,7 +276,7 @@ class Workbook:
                     valueRenderOption="UNFORMATTED_VALUE",
                     dateTimeRenderOption="SERIAL_NUMBER",
                 )
-                .execute()
+                .execute(num_retries=RETRIES)
             )
             for name, block in zip(chunk, response.get("valueRanges", [])):
                 out[name] = block.get("values", [])
@@ -328,7 +336,7 @@ class Workbook:
                 valueRenderOption="UNFORMATTED_VALUE",
                 dateTimeRenderOption="SERIAL_NUMBER",
             )
-            .execute()
+            .execute(num_retries=RETRIES)
         )
         return response.get("values", [])
 
@@ -345,7 +353,7 @@ class Workbook:
             self._service.spreadsheets()
             .values()
             .get(spreadsheetId=self.id, range=f"{CONFIG_SHEET}!A:B")
-            .execute()
+            .execute(num_retries=RETRIES)
             .get("values", [])
         )
         for row in rows[1:]:
@@ -370,7 +378,7 @@ class Workbook:
                         }
                     ]
                 },
-            ).execute()
+            ).execute(num_retries=RETRIES)
             self._metadata(refresh=True)
             rows = [CONFIG_HEADER]
         else:
@@ -378,7 +386,7 @@ class Workbook:
                 self._service.spreadsheets()
                 .values()
                 .get(spreadsheetId=self.id, range=f"{CONFIG_SHEET}!A:B")
-                .execute()
+                .execute(num_retries=RETRIES)
                 .get("values", [])
             ) or [CONFIG_HEADER]
 
@@ -398,7 +406,7 @@ class Workbook:
             range=f"{CONFIG_SHEET}!A1",
             valueInputOption="RAW",
             body={"values": body},
-        ).execute()
+        ).execute(num_retries=RETRIES)
 
     # -- writing -----------------------------------------------------------
 
@@ -421,4 +429,4 @@ class Workbook:
                     self.sheet_id(page.name), placement.cells
                 )
             },
-        ).execute()
+        ).execute(num_retries=RETRIES)

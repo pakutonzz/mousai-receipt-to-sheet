@@ -126,6 +126,8 @@ class Operators(Base):
         self.assertIn(thai(Notice("alert_bot")), to(replies, OPERATOR)[0])
         network = self.bot.failed(incoming, ConnectionResetError("reset"))
         self.assertIn(thai(Notice("alert_sheets")), to(network, OPERATOR)[0])
+        # The sender is told it was the connection, not their receipt.
+        self.assertEqual(to(network, MON), [thai(Notice("bot_failed_sheets"))])
 
     def test_book_matters_never_reach_an_operator_alone(self):
         replies = self.press(ok(self.photo("รับรองลูกค้า")))

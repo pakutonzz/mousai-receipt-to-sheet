@@ -6,7 +6,8 @@ This captures what Vision actually returns for the images in `sample/`, so the
 parser can be tuned and then regression-tested offline forever after.
 
 These are sample images rather than clinic records, so unlike the Workbook
-baseline they are safe to commit.
+baseline they are safe to commit. Samples that git ignores (real slips with
+names and account numbers) are skipped.
 
     python scripts/capture_receipts.py                 # everything in sample/
     python scripts/capture_receipts.py --feature DOCUMENT_TEXT_DETECTION
@@ -21,6 +22,7 @@ from __future__ import annotations
 import argparse
 import base64
 import json
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -36,12 +38,32 @@ FIXTURES = ROOT / "tests" / "fixtures" / "receipts"
 SUFFIXES = {".jpg", ".jpeg", ".png", ".webp", ""}
 
 
+def ignored(paths: list[Path]) -> set[Path]:
+    """The samples git ignores: real receipts and slips, with names and account
+    numbers. Their Vision output would land in the committed fixtures, so they
+    are never captured here."""
+    if not paths:
+        return set()
+    # NUL-separated bytes: in text mode Windows adds a "\r" to every path and
+    # git then matches none of them.
+    result = subprocess.run(
+        ["git", "check-ignore", "-z", "--stdin"],
+        input="\0".join(p.relative_to(ROOT).as_posix() for p in paths).encode("utf-8"),
+        capture_output=True,
+        cwd=ROOT,
+    )
+    names = result.stdout.decode("utf-8").split("\0")
+    return {(ROOT / name).resolve() for name in names if name}
+
+
 def images(only: str | None) -> list[Path]:
     found = [
         p
         for p in sorted(SAMPLES.rglob("*"))
         if p.is_file() and p.suffix.lower() in SUFFIXES
     ]
+    private = ignored(found)
+    found = [p for p in found if p.resolve() not in private]
     if only:
         found = [p for p in found if only in str(p.relative_to(SAMPLES))]
     return found
