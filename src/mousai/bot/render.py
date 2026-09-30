@@ -16,7 +16,7 @@ from ..review import Review, severity
 
 # Offered when a photo arrives without a caption. A starting list; the Workbook's
 # own most frequent purposes can replace it once it is clear which recur.
-PURPOSES = ("รับรองลูกค้า", "ใช้ในคลินิก", "ส่งยาให้คนไข้", "เลี้ยงพนักงาน")
+PURPOSES = ("รับรองลูกค้า", "ใช้ในคลินิก", "ส่งยาให้คนไข้")
 
 # Offered when a Keeper rejects a queued Transaction; anything else is typed.
 REJECT_REASONS = ("ซ้ำ", "ไม่ใช่ค่าใช้จ่ายของคลินิก", "ข้อมูลไม่ครบ")
